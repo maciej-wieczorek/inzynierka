@@ -22,14 +22,14 @@ def capture_packets(interface, filter_expr, num_packets, timeout):
             timestamp = float(pkt.sniff_timestamp)
             
             # print(f"Timestamp: {timestamp}, Source: {ip_src}:{port_src}, Destination: {ip_dst}:{port_dst}, Packet Size: {packet_size}")
-            print(f"{timestamp}\t{ip_src}:{port_src}\t{ip_dst}:{port_dst}\t{packet_size}")
+            print(f"{timestamp},{ip_src}:{port_src},{ip_dst}:{port_dst},{packet_size}")
         except AttributeError:
             print("error")
         
 if __name__ == "__main__":
-    interface = "Ethernet"
+    interface = "Wi-Fi"
     filter_expr = ""  # Wireshark filter expression (e.g., "tcp port 80")
-    num_packets = 1000  # Number of packets to capture
-    timeout = 5 # Timeout in seconds
+    num_packets = 10000  # Number of packets to capture
+    timeout = 100 # Timeout in seconds
 
     capture_packets(interface, filter_expr, num_packets, timeout)
