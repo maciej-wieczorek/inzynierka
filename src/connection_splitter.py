@@ -4,8 +4,8 @@ import time
 
 class Connection:
     def __init__(self, node1, node2):
-        port1 = node1.split(':')[1]
-        port2 = node2.split(':')[1]
+        port1 = int(node1.split(':')[1])
+        port2 = int(node2.split(':')[1])
 
         if (port1 < port2):
             self.server = node1 

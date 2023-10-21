@@ -51,7 +51,7 @@ if __name__ == '__main__':
             if i != group_index and groups[i].count > 0:
                 if group_index not in groups[i].delays:
                     groups[i].delays[group_index] = []
-                groups[i].delays[group_index].append(timestamp - groups[i].latest_timestamp)
+                groups[i].delays[group_index].append(1000 * (timestamp - groups[i].latest_timestamp))
 
     for group in groups:
         for other_group_index in group.delays:
