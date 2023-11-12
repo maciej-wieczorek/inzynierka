@@ -24,9 +24,9 @@ def calc_group_index(size):
     interval_index = int((size - PACKET_SIZE_MIN) / interval_size)
     return max(0, min(NUM_GROUPS - 1, interval_index))
 
-if __name__ == '__main__':
+def group(input_stream):
     entries = []
-    for line in sys.stdin:
+    for line in input_stream:
         splitted = line.split(',')
         timestamp = float(splitted[0])
         size = int(splitted[1][:-1])
@@ -47,9 +47,16 @@ if __name__ == '__main__':
                 if group_index not in groups[i].delays:
                     groups[i].delays[group_index] = []
                 groups[i].delays[group_index].append(1000 * (timestamp - groups[i].latest_timestamp))
-
+    output = []
     for group_index, group in enumerate(groups):
         for other_group_index in group.delays:
-            other = groups[other_group_index]
+            # other = groups[other_group_index]
             delays = group.delays[other_group_index]
-            print(f'{group_index},{other_group_index},{sum(delays) / len(delays)}')
+            output.append(f'{group_index},{other_group_index},{sum(delays) / len(delays)}')
+
+    return output
+        
+
+if __name__ == '__main__':
+    for line in group(sys.stdin):
+        print(line)

@@ -46,7 +46,7 @@ connections_dir = ''
 
 if __name__ == '__main__':
     connections = {}
-    connections_dir = f'connections_{time.time()}'
+    connections_dir = f'connections/connections_{time.time()}'
     os.makedirs(connections_dir)
     for line in sys.stdin:
         splitted = line.split(',')
