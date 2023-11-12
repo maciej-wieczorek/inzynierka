@@ -5,23 +5,18 @@ from torch_geometric.nn import GCNConv, GINConv
 from torch_geometric.nn import global_mean_pool, global_add_pool
 from torch_geometric.loader import DataLoader
 
+import data_builder
 from data_builder import build_data
-
-class DataSet:
-    def __init__(self):
-        self.num_node_features = 15
-        self.num_classes = 3
-
-dataset = DataSet()
+from grouper import NUM_GROUPS
 
 class GCN(torch.nn.Module):
     """GCN"""
     def __init__(self, dim_h):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(dataset.num_node_features, dim_h)
+        self.conv1 = GCNConv(NUM_GROUPS, dim_h)
         self.conv2 = GCNConv(dim_h, dim_h)
         self.conv3 = GCNConv(dim_h, dim_h)
-        self.lin = Linear(dim_h, dataset.num_classes)
+        self.lin = Linear(dim_h, len(data_builder.CLASSES))
 
     def forward(self, x, edge_index, batch):
         # Node embeddings 
@@ -45,7 +40,7 @@ class GIN(torch.nn.Module):
     def __init__(self, dim_h):
         super(GIN, self).__init__()
         self.conv1 = GINConv(
-            Sequential(Linear(dataset.num_node_features, dim_h),
+            Sequential(Linear(NUM_GROUPS, dim_h),
                        BatchNorm1d(dim_h), ReLU(),
                        Linear(dim_h, dim_h), ReLU()))
         self.conv2 = GINConv(
@@ -55,7 +50,7 @@ class GIN(torch.nn.Module):
             Sequential(Linear(dim_h, dim_h), BatchNorm1d(dim_h), ReLU(),
                        Linear(dim_h, dim_h), ReLU()))
         self.lin1 = Linear(dim_h*3, dim_h*3)
-        self.lin2 = Linear(dim_h*3, dataset.num_classes)
+        self.lin2 = Linear(dim_h*3, len(data_builder.CLASSES))
 
     def forward(self, x, edge_index, batch):
         # Node embeddings 
@@ -92,10 +87,6 @@ def train(model, loader):
         val_acc = 0
 
         # Train on batches
-        #data contains 64 graphs
-        # data.x -> nodes each as vector of one hot
-        # data.batch -> to which graph the node belong to
-        # data.edge_index 2d array, to which node the node is connected to [0, 0, 0, ...], [14, 25, 26, ...] 0 connected to 14
         for data in loader:
             optimizer.zero_grad()
             out = model(data.x, data.edge_index, data.batch)
@@ -134,12 +125,12 @@ def accuracy(pred_y, y):
 
 if __name__ == '__main__':
 
-    packet_data = build_data()
+    dataset = build_data()
 
     # Create training, validation, and test sets
-    train_dataset = packet_data[:int(len(packet_data)*0.8)]
-    val_dataset   = packet_data[int(len(packet_data)*0.8):int(len(packet_data)*0.9)]
-    test_dataset  = packet_data[int(len(packet_data)*0.9):]
+    train_dataset = dataset[:int(len(dataset)*0.8)]
+    val_dataset   = dataset[int(len(dataset)*0.8):int(len(dataset)*0.9)]
+    test_dataset  = dataset[int(len(dataset)*0.9):]
 
     print(f'Training set   = {len(train_dataset)} graphs')
     print(f'Validation set = {len(val_dataset)} graphs')
