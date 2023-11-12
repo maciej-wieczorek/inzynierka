@@ -27,7 +27,7 @@ def capture_packets(interface, filter_expr, num_packets, timeout):
             print("error")
         
 if __name__ == "__main__":
-    interface = "Wi-Fi"
+    interface = "Ethernet"
     filter_expr = ""  # Wireshark filter expression (e.g., "tcp port 80")
     num_packets = 10000  # Number of packets to capture
     timeout = 100 # Timeout in seconds
