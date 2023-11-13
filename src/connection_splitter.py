@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import signal
 
 CONNECTION_MIN_COUNT = 100
 # connections that captured less then CONNECTION_MIN_COUNT packets are deleted
@@ -53,13 +54,21 @@ def delete_empty_directories(path):
         if len(os.listdir(subdir_path)) == 0:
             os.rmdir(subdir_path)
 
+def ignore_sigint_handler(sig, frame):
+    pass
+
 connections_dir = ''
 
 if __name__ == '__main__':
+    print('Connection splitter. (Stop with Ctrl-C)')
+    signal.signal(signal.SIGINT, ignore_sigint_handler) # receive stop from capturer
     connections = {}
     connections_dir = f'connections/connections_{time.time()}'
     os.makedirs(connections_dir)
+    print(f'Dumping to: {connections_dir}')
     for line in sys.stdin:
+        if 'stop' in line:
+            break
         splitted = line.split(',')
         if (len(splitted) == 4):
             node1 = splitted[1]
@@ -73,6 +82,7 @@ if __name__ == '__main__':
             size = splitted[3]
             connection.write_file(timestamp, size)
 
+    print('clean up...')
     for conn in connections.values():
         conn.file.close()
         if conn.write_count < CONNECTION_MIN_COUNT:
