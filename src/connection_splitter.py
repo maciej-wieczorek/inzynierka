@@ -2,6 +2,9 @@ import sys
 import os
 import time
 
+CONNECTION_MIN_COUNT = 100
+# connections that captured less then CONNECTION_MIN_COUNT packets are deleted
+
 class Connection:
     def __init__(self, node1, node2):
         port1 = int(node1.split(':')[1])
@@ -21,6 +24,7 @@ class Connection:
         if not os.path.exists(file_path):
             os.makedirs(file_path)
         self.file = open(f'{file_path}/{server_ip}_{server_port}-{client_ip}_{client_port}.txt', 'w')
+        self.write_count = 0
     
     def compare(self, node1, node2):
         if (self.client == node1 and self.server == node2):
@@ -31,6 +35,7 @@ class Connection:
 
     def write_file(self, timestamp, bytes):
         self.file.write(f'{timestamp},{bytes}')
+        self.write_count += 1
 
 def find_connection(connections, node1, node2):
     key1 = f'{node1}-{node2}'
@@ -41,6 +46,12 @@ def find_connection(connections, node1, node2):
         return connections[key2]
 
     return None
+
+def delete_empty_directories(path):
+    for subdir in os.listdir(path):
+        subdir_path = os.path.join(path, subdir)
+        if len(os.listdir(subdir_path)) == 0:
+            os.rmdir(subdir_path)
 
 connections_dir = ''
 
@@ -64,3 +75,8 @@ if __name__ == '__main__':
 
     for conn in connections.values():
         conn.file.close()
+        if conn.write_count < CONNECTION_MIN_COUNT:
+            os.remove(conn.file.name)
+    
+    delete_empty_directories(connections_dir)
+    

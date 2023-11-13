@@ -1,3 +1,5 @@
+import random
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
@@ -119,6 +121,17 @@ def test(model, loader):
 
     return loss, acc
 
+def print_class_distribution(dataset):
+    class_distribution = np.array([data.y[0].tolist() for data in dataset])
+    unique_classes, class_counts = np.unique(class_distribution, return_counts=True)
+    for class_index, count in zip(unique_classes, class_counts):
+        print(f"Class {class_index} ({data_builder.CLASSES[class_index]}): {count} {round(100*count/class_distribution.size, 2)}%")
+
+def print_dataset_info(dataset, name):
+    print(f'{name} = {len(dataset)} graphs')
+    print_class_distribution(dataset)
+    print()
+
 def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
@@ -126,15 +139,18 @@ def accuracy(pred_y, y):
 if __name__ == '__main__':
 
     dataset = build_data()
+    random.shuffle(dataset)
+
+    print_dataset_info(dataset, 'Full dataset')
 
     # Create training, validation, and test sets
     train_dataset = dataset[:int(len(dataset)*0.8)]
     val_dataset   = dataset[int(len(dataset)*0.8):int(len(dataset)*0.9)]
     test_dataset  = dataset[int(len(dataset)*0.9):]
 
-    print(f'Training set   = {len(train_dataset)} graphs')
-    print(f'Validation set = {len(val_dataset)} graphs')
-    print(f'Test set       = {len(test_dataset)} graphs')
+    print_dataset_info(train_dataset, 'Training set')
+    print_dataset_info(val_dataset, 'Validation set')
+    print_dataset_info(test_dataset, 'Test set')
 
     # Create mini-batches
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)

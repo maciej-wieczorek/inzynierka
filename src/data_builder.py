@@ -4,10 +4,13 @@ import numpy as np
 import os
 from grouper import group, NUM_GROUPS
 
-CLASSES = [] # TODO: should be predetermined
+CLASSES = ['non-web-traffic', 'web-traffic'] # TODO
 
 def get_graph_class(label):
-    return CLASSES.index(label)
+    if label in ['80', '443']:
+        return CLASSES.index('web-traffic')
+    else:
+        return CLASSES.index('non-web-traffic')
 
 def build_data():
     connections_root_dir = 'connections'
