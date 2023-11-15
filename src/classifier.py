@@ -6,6 +6,7 @@ from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
 from torch_geometric.nn import GCNConv, GINConv
 from torch_geometric.nn import global_mean_pool, global_add_pool
 from torch_geometric.loader import DataLoader
+from sklearn.model_selection import train_test_split
 
 import data_builder
 from data_builder import build_data
@@ -136,6 +137,32 @@ def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
+def split_dataset(dataset, test_size=0.2, validation_size=0.1, random_state=42):
+    # Extract labels and indices
+    labels = [data.y[0] for data in dataset]
+    indices = list(range(len(dataset)))
+
+    # Split the dataset into training and temp (test + validation)
+    train_indices, temp_indices, train_labels, temp_labels = train_test_split(
+        indices, labels, test_size=(test_size + validation_size), stratify=labels, random_state=random_state)
+
+    # Split the temp dataset into test and validation
+    test_indices, validation_indices, _, _ = train_test_split(
+        temp_indices, temp_labels, test_size=(validation_size / (test_size + validation_size)),
+        stratify=temp_labels, random_state=random_state)
+
+    # Create DataLoader for each split
+    train_sampler = torch.utils.data.SubsetRandomSampler(train_indices)
+    train_loader = DataLoader(dataset, batch_size=64, sampler=train_sampler)
+
+    test_sampler = torch.utils.data.SubsetRandomSampler(test_indices)
+    test_loader = DataLoader(dataset, batch_size=64, sampler=test_sampler)
+
+    validation_sampler = torch.utils.data.SubsetRandomSampler(validation_indices)
+    validation_loader = DataLoader(dataset, batch_size=64, sampler=validation_sampler)
+
+    return train_loader, test_loader, validation_loader
+
 if __name__ == '__main__':
 
     dataset = build_data()
@@ -147,6 +174,8 @@ if __name__ == '__main__':
     train_dataset = dataset[:int(len(dataset)*0.8)]
     val_dataset   = dataset[int(len(dataset)*0.8):int(len(dataset)*0.9)]
     test_dataset  = dataset[int(len(dataset)*0.9):]
+
+    #train_dataset, test_dataset, val_dataset = split_dataset(dataset)
 
     print_dataset_info(train_dataset, 'Training set')
     print_dataset_info(val_dataset, 'Validation set')

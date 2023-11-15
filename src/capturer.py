@@ -34,7 +34,7 @@ def capture_packets(interface, filter_expr, num_packets, timeout):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    interface = "Ethernet"
+    interface = "Wi-Fi"
     filter_expr = ""  # Wireshark filter expression (e.g., "tcp port 80")
     num_packets = sys.maxsize  # Number of packets to capture
     timeout = sys.maxsize # Timeout in seconds
