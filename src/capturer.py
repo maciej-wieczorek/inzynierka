@@ -5,6 +5,7 @@ import sys
 
 def signal_handler(sig, frame):
     print("stop")
+    sys.exit(0)
 
 def capture_packets(interface, filter_expr, num_packets, timeout):
     cap = pyshark.LiveCapture(interface=interface, display_filter=filter_expr, only_summaries=False)
@@ -34,7 +35,7 @@ def capture_packets(interface, filter_expr, num_packets, timeout):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    interface = "Wi-Fi"
+    interface = "Ethernet"
     filter_expr = ""  # Wireshark filter expression (e.g., "tcp port 80")
     num_packets = sys.maxsize  # Number of packets to capture
     timeout = sys.maxsize # Timeout in seconds
