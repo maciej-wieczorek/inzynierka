@@ -19,6 +19,10 @@ def capture_packets(interface, filter_expr, num_packets, timeout):
         if (time.time() - start_time) >= timeout:
             break
 
+        # skip non transport layer packets eg. ICMP, ARP or non IPv4
+        if pkt.transport_layer == None or 'ip' not in pkt:
+            continue
+
         try:
             ip_src = pkt.ip.src
             ip_dst = pkt.ip.dst
