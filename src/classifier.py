@@ -8,9 +8,8 @@ from torch_geometric.nn import global_mean_pool, global_add_pool
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import train_test_split
 
-import data_builder
-from data_builder import build_data
-from grouper import NUM_GROUPS
+from knowledge_classifier import get_connection_classifier
+from data_builder import NUM_GROUPS, build_data
 
 class GCN(torch.nn.Module):
     """GCN"""
@@ -19,7 +18,7 @@ class GCN(torch.nn.Module):
         self.conv1 = GCNConv(NUM_GROUPS, dim_h)
         self.conv2 = GCNConv(dim_h, dim_h)
         self.conv3 = GCNConv(dim_h, dim_h)
-        self.lin = Linear(dim_h, len(data_builder.CLASSES))
+        self.lin = Linear(dim_h, len(get_connection_classifier().get_labels()))
 
     def forward(self, x, edge_index, batch):
         # Node embeddings 
@@ -38,46 +37,7 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-class GIN(torch.nn.Module):
-    """GIN"""
-    def __init__(self, dim_h):
-        super(GIN, self).__init__()
-        self.conv1 = GINConv(
-            Sequential(Linear(NUM_GROUPS, dim_h),
-                       BatchNorm1d(dim_h), ReLU(),
-                       Linear(dim_h, dim_h), ReLU()))
-        self.conv2 = GINConv(
-            Sequential(Linear(dim_h, dim_h), BatchNorm1d(dim_h), ReLU(),
-                       Linear(dim_h, dim_h), ReLU()))
-        self.conv3 = GINConv(
-            Sequential(Linear(dim_h, dim_h), BatchNorm1d(dim_h), ReLU(),
-                       Linear(dim_h, dim_h), ReLU()))
-        self.lin1 = Linear(dim_h*3, dim_h*3)
-        self.lin2 = Linear(dim_h*3, len(data_builder.CLASSES))
-
-    def forward(self, x, edge_index, batch):
-        # Node embeddings 
-        h1 = self.conv1(x, edge_index)
-        h2 = self.conv2(h1, edge_index)
-        h3 = self.conv3(h2, edge_index)
-
-        # Graph-level readout
-        h1 = global_add_pool(h1, batch)
-        h2 = global_add_pool(h2, batch)
-        h3 = global_add_pool(h3, batch)
-
-        # Concatenate graph embeddings
-        h = torch.cat((h1, h2, h3), dim=1)
-
-        # Classifier
-        h = self.lin1(h)
-        h = h.relu()
-        h = F.dropout(h, p=0.5, training=self.training)
-        h = self.lin2(h)
-        
-        return F.softmax(h, dim=1)
-    
-def train(model, loader):
+def train(model, loader, val_loader):
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     epochs = 100
@@ -126,7 +86,7 @@ def print_class_distribution(dataset):
     class_distribution = np.array([data.y[0].tolist() for data in dataset])
     unique_classes, class_counts = np.unique(class_distribution, return_counts=True)
     for class_index, count in zip(unique_classes, class_counts):
-        print(f"Class {class_index} ({data_builder.CLASSES[class_index]}): {count} {round(100*count/class_distribution.size, 2)}%")
+        print(f"Class {class_index} ({get_connection_classifier().get_labels()[class_index]}): {count} {round(100*count/class_distribution.size, 2)}%")
 
 def print_dataset_info(dataset, name):
     print(f'{name} = {len(dataset)} graphs')
@@ -163,8 +123,7 @@ def split_dataset(dataset, test_size=0.2, validation_size=0.1, random_state=42):
 
     return train_loader, test_loader, validation_loader
 
-if __name__ == '__main__':
-
+def train_model():
     dataset = build_data()
     random.shuffle(dataset)
 
@@ -187,12 +146,9 @@ if __name__ == '__main__':
     test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
     gcn = GCN(dim_h=32)
-    gcn = train(gcn, train_loader)
+    gcn = train(gcn, train_loader, val_loader)
     test_loss, test_acc = test(gcn, test_loader)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
-    print()
 
-    gin = GIN(dim_h=32)
-    gin = train(gin, train_loader)
-    test_loss, test_acc = test(gin, test_loader)
-    print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
+if __name__ == '__main__':
+    train_model()

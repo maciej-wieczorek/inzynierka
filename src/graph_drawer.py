@@ -1,4 +1,3 @@
-import sys
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -31,10 +30,12 @@ def draw_graph(G):
 
     plt.show()
 
-if __name__ == '__main__':
+def get_nx_representation(graph):
     G = nx.DiGraph()
-    for line in sys.stdin:
+    for line in graph.split(' '):
         node1, node2, delay = line.split(',')
         G.add_edge(node1, node2, weight=float(delay.strip()))
+    return G
 
-    draw_graph(G)
+def draw(graph):
+    draw_graph(get_nx_representation(graph))
