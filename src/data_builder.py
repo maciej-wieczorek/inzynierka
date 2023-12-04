@@ -37,7 +37,7 @@ def build_data():
     count = 0
     print(f'Building data: {count}  ', end='\r')
 
-    df = pd.read_csv('graphs.csv')
+    df = pd.read_csv('local_graphs/graphs-old.csv')
     graph_data_list = []
 
     for _, row in df.iterrows():
