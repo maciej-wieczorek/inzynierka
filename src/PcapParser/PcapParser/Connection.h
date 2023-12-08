@@ -19,7 +19,7 @@ public:
     timespec getFirstTimestamp() const;
     timespec getLastTimestamp() const;
 
-    void save(std::ostream& stream);
+    void save(std::ostream& stream, const char* dataSource);
 
 private:
     pcpp::IPv4Address m_clinetIP;

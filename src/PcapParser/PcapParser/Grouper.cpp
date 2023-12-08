@@ -73,6 +73,16 @@ int Grouper::getGroupIndex(unsigned int size)
     int left = 0;
     int right = numGroups - 1;
 
+    // handle edge cases
+    if (size < groups[left].minSize)
+    {
+        return left;
+    }
+    else if (size > groups[right].maxSize)
+    {
+        return right;
+    }
+
     // bin search for group
     while (left <= right)
     {

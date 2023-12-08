@@ -16,9 +16,9 @@ public:
     static constexpr size_t maxTimeLenConnection = 60; // 60s
 
     static constexpr const char* graphsFilename = "graphs.csv";
-    static constexpr const char* csvHeader = "client,server,graph";
+    static constexpr const char* csvHeader = "client,server,datasource,graph";
 
-    Splitter();
+    Splitter(const char* dataSource);
     ~Splitter();
     void add_packet(pcpp::IPv4Address clientIP, uint16_t clientPort,
         pcpp::IPv4Address serverIP, uint16_t serverPort, timespec timestamp, int len);
@@ -27,5 +27,6 @@ public:
 private:
     std::map<std::string, Connection> m_connections;
     std::ofstream m_graphsFile;
+    std::string m_dataSource;
 };
 

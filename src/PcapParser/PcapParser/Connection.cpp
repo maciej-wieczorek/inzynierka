@@ -42,12 +42,12 @@ timespec Connection::getLastTimestamp() const
     return m_content[m_content.size() - 1].timestamp;
 }
 
-void Connection::save(std::ostream& stream)
+void Connection::save(std::ostream& stream, const char* dataSource)
 {
     std::unique_ptr<Graph> graph = getGrouper().group(m_content);
     // graphs can be empty when all packets were of same group size
     if (graph->edgeList.size() > 0)
     {
-        stream << m_clinetIP << ':' << m_clientPort << ',' << m_serverIP << ':' << m_serverPort << ",\"" << *graph << "\"\n";
+        stream << m_clinetIP << ':' << m_clientPort << ',' << m_serverIP << ':' << m_serverPort << ',' << dataSource << ",\"" << *graph << "\"\n";
     }
 }

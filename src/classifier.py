@@ -8,17 +8,16 @@ from torch_geometric.nn import global_mean_pool, global_add_pool
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import train_test_split
 
-from knowledge_classifier import get_connection_classifier
 from data_builder import NUM_GROUPS, build_data
 
 class GCN(torch.nn.Module):
     """GCN"""
-    def __init__(self, dim_h):
+    def __init__(self, dim_h, dim_o):
         super(GCN, self).__init__()
         self.conv1 = GCNConv(NUM_GROUPS, dim_h)
         self.conv2 = GCNConv(dim_h, dim_h)
         self.conv3 = GCNConv(dim_h, dim_h)
-        self.lin = Linear(dim_h, len(get_connection_classifier().get_labels()))
+        self.lin = Linear(dim_h, dim_o)
 
     def forward(self, x, edge_index, batch):
         # Node embeddings 
@@ -82,15 +81,15 @@ def test(model, loader):
 
     return loss, acc
 
-def print_class_distribution(dataset):
+def print_class_distribution(dataset, labels):
     class_distribution = np.array([data.y[0].tolist() for data in dataset])
     unique_classes, class_counts = np.unique(class_distribution, return_counts=True)
     for class_index, count in zip(unique_classes, class_counts):
-        print(f"Class {class_index} ({get_connection_classifier().get_labels()[class_index]}): {count} {round(100*count/class_distribution.size, 2)}%")
+        print(f"Class {class_index} ({labels[class_index]}): {count} {round(100*count/class_distribution.size, 2)}%")
 
-def print_dataset_info(dataset, name):
+def print_dataset_info(dataset, labels, name):
     print(f'{name} = {len(dataset)} graphs')
-    print_class_distribution(dataset)
+    print_class_distribution(dataset, labels)
     print()
 
 def accuracy(pred_y, y):
@@ -124,10 +123,10 @@ def split_dataset(dataset, test_size=0.2, validation_size=0.1, random_state=42):
     return train_loader, test_loader, validation_loader
 
 def train_model():
-    dataset = build_data()
+    dataset, labels = build_data()
     random.shuffle(dataset)
 
-    print_dataset_info(dataset, 'Full dataset')
+    print_dataset_info(dataset, labels, 'Full dataset')
 
     # Create training, validation, and test sets
     train_dataset = dataset[:int(len(dataset)*0.8)]
@@ -136,16 +135,16 @@ def train_model():
 
     #train_dataset, test_dataset, val_dataset = split_dataset(dataset)
 
-    print_dataset_info(train_dataset, 'Training set')
-    print_dataset_info(val_dataset, 'Validation set')
-    print_dataset_info(test_dataset, 'Test set')
+    print_dataset_info(train_dataset, labels, 'Training set')
+    print_dataset_info(val_dataset, labels, 'Validation set')
+    print_dataset_info(test_dataset, labels, 'Test set')
 
     # Create mini-batches
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
     val_loader   = DataLoader(val_dataset, batch_size=64, shuffle=True)
     test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
-    gcn = GCN(dim_h=32)
+    gcn = GCN(dim_h=32, dim_o=len(labels))
     gcn = train(gcn, train_loader, val_loader)
     test_loss, test_acc = test(gcn, test_loader)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')

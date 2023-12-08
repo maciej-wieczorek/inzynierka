@@ -2,7 +2,6 @@ from torch_geometric.data import Data
 import torch
 import numpy as np
 import pandas as pd
-from knowledge_classifier import Connection, get_connection_classifier
 
 NUM_GROUPS = 30
 
@@ -37,14 +36,17 @@ def build_data():
     count = 0
     print(f'Building data: {count}  ', end='\r')
 
-    df = pd.read_csv('local_graphs/graphs-old.csv')
+    df = pd.read_csv('graphs.csv')
+    df = df[df['datasource'] == 'VPN/NONVPN NETWORK APPLICATION TRAFFIC DATASET (VNAT)']
+
+    labels = list(df['label'].unique())
+
     graph_data_list = []
 
     for _, row in df.iterrows():
-        label_index = get_connection_classifier().classify(Connection(row['client'], row['server']))
-        graph_data_list.append(build_graph_tensor_representation(label_index, row['graph']))
+        graph_data_list.append(build_graph_tensor_representation(labels.index(row['label']), row['graph']))
 
         print(f'Building data: {count}  ', end='\r')
         count += 1
 
-    return graph_data_list
+    return graph_data_list, labels

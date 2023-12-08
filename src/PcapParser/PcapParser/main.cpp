@@ -22,14 +22,14 @@ void readCaptureFile(const char* filepath)
 {
     std::cout << "Reading: " << filepath << '\n';
 
-    static Splitter splitter;
+    Splitter splitter{ filepath };
 
    // open a pcap file for reading
     pcpp::PcapFileReaderDevice reader(filepath);
     if (!reader.open())
     {
-        std::cerr << "Error opening the capture file" << std::endl;
-        throw std::exception{};
+        std::cerr << "Error opening the capture file: " << filepath << std::endl;
+        return;
     }
 
     // read packet from the file
@@ -64,14 +64,16 @@ void readCaptureFile(const char* filepath)
                 pcpp::IPv4Address srcIP = parsedPacket.getLayerOfType<pcpp::IPv4Layer>()->getSrcIPv4Address();
                 pcpp::IPv4Address dstIP = parsedPacket.getLayerOfType<pcpp::IPv4Layer>()->getDstIPv4Address();
 
+                int packetLen = rawPacket.getRawDataLen();
+
                 // print source and dest IPs
                 if (srcPort < dstPort)
                 {
-                    splitter.add_packet(dstIP, dstPort, srcIP, srcPort, rawPacket.getPacketTimeStamp(), rawPacket.getRawDataLen());
+                    splitter.add_packet(dstIP, dstPort, srcIP, srcPort, rawPacket.getPacketTimeStamp(), packetLen);
                 }
                 else
                 {
-                    splitter.add_packet(srcIP, srcPort, dstIP, dstPort, rawPacket.getPacketTimeStamp(), rawPacket.getRawDataLen());
+                    splitter.add_packet(srcIP, srcPort, dstIP, dstPort, rawPacket.getPacketTimeStamp(), packetLen);
                 }
             }
         }

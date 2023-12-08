@@ -3,7 +3,8 @@
 #include "Splitter.h"
 #include "Utilities.h"
 
-Splitter::Splitter()
+Splitter::Splitter(const char* dataSource)
+    : m_dataSource{ dataSource }
 {
     if (std::filesystem::exists(graphsFilename))
     {
@@ -23,7 +24,7 @@ Splitter::~Splitter()
     {
         if (find.second.getCountPackets() >= Splitter::minSizeConnection)
         {
-            find.second.save(m_graphsFile);
+            find.second.save(m_graphsFile, m_dataSource.c_str());
         }
     }
 }
@@ -44,7 +45,7 @@ void Splitter::add_packet(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp:
     {
         if (shouldReset(find->second))
         {
-            find->second.save(m_graphsFile);
+            find->second.save(m_graphsFile, m_dataSource.c_str());
             find->second.reset();
         }
 

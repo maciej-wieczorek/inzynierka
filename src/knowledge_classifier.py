@@ -78,7 +78,3 @@ class PortConnectionClassifier(IConnectionClassifier):
 
     def get_name(self):
         return 'PortConnectionClassifier'
-
-# choose classifier
-def get_connection_classifier():
-    return VideoStreamerServiceConnectionClassifier()
