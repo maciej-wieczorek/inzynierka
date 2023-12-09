@@ -36,7 +36,8 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, val_loader):
+def train(model, loader, print_every=1):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     epochs = 100
@@ -45,11 +46,10 @@ def train(model, loader, val_loader):
     for epoch in range(epochs+1):
         total_loss = 0
         acc = 0
-        val_loss = 0
-        val_acc = 0
 
         # Train on batches
         for data in loader:
+            data = data.to(device, non_blocking=True)
             optimizer.zero_grad()
             out = model(data.x, data.edge_index, data.batch)
             loss = criterion(out, data.y)
@@ -58,23 +58,21 @@ def train(model, loader, val_loader):
             loss.backward()
             optimizer.step()
 
-            # Validation
-            val_loss, val_acc = test(model, val_loader)
-
-        # Print metrics every 20 epochs
-        if(epoch % 20 == 0):
-            print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
+        if(epoch % print_every == 0):
+            print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}%')
             
     return model
 
 @torch.no_grad()
 def test(model, loader):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
     loss = 0
     acc = 0
 
     for data in loader:
+        data = data.to(device)
         out = model(data.x, data.edge_index, data.batch)
         loss += criterion(out, data.y) / len(loader)
         acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
@@ -144,8 +142,9 @@ def train_model():
     val_loader   = DataLoader(val_dataset, batch_size=64, shuffle=True)
     test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
-    gcn = GCN(dim_h=32, dim_o=len(labels))
-    gcn = train(gcn, train_loader, val_loader)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    gcn = GCN(dim_h=32, dim_o=len(labels)).to(device)
+    gcn = train(gcn, train_loader)
     test_loss, test_acc = test(gcn, test_loader)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 

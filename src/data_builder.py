@@ -38,6 +38,8 @@ def build_data():
 
     df = pd.read_csv('graphs.csv')
     df = df[df['datasource'] == 'VPN/NONVPN NETWORK APPLICATION TRAFFIC DATASET (VNAT)']
+    df = df[~df['label'].str.contains('scp')]
+    df = df[~df['label'].str.contains('sftp')]
 
     labels = list(df['label'].unique())
 
