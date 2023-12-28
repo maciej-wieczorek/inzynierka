@@ -102,7 +102,7 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, epochs=100, print_every=1):
+def train(model, loader, val_loader, epochs=100, print_every=1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -124,12 +124,13 @@ def train(model, loader, epochs=100, print_every=1):
             optimizer.step()
 
         if(epoch % print_every == 0):
-            print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}%')
+            val_loss, val_acc = test(model, val_loader)
+            print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
             
     return model
 
 @torch.no_grad()
-def test(model, loader):
+def test(model, loader, conf_matrix=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
@@ -144,11 +145,14 @@ def test(model, loader):
         out = model(data.x, data.edge_index, data.batch)
         loss += criterion(out, data.y) / len(loader)
         acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
-        model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
-        correct_pred.extend(list(data.y.cpu().numpy()))
 
-    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred)
-    plt.show()
+        if conf_matrix:
+            model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
+            correct_pred.extend(list(data.y.cpu().numpy()))
+
+    if conf_matrix:
+        ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred)
+        plt.show()
 
     return loss, acc
 
@@ -217,8 +221,8 @@ def train_model():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     gcn = GCN2(dim_o=len(labels)).to(device)
-    gcn = train(gcn, train_loader, epochs=40)
-    test_loss, test_acc = test(gcn, test_loader)
+    gcn = train(gcn, train_loader, val_loader, epochs=5)
+    test_loss, test_acc = test(gcn, test_loader, conf_matrix=True)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
