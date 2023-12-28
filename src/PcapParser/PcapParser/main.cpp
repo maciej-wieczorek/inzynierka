@@ -12,11 +12,10 @@
 #include "pcapplusplus/Packet.h"
 #include "pcapplusplus/PcapFileDevice.h"
 #include "pcapplusplus/PcapLiveDeviceList.h"
-#include "pcapplusplus/IPv4Layer.h"
-#include "pcapplusplus/TcpLayer.h"
-#include "pcapplusplus/UdpLayer.h"
 
 #include "Splitter.h"
+
+#include <windows.h>
 
 void readCaptureFile(const char* filepath)
 {
@@ -39,66 +38,62 @@ void readCaptureFile(const char* filepath)
         // parse the raw packet into a parsed packet
         pcpp::Packet parsedPacket(&rawPacket);
 
-        // verify the packet is IPv4
-        if (parsedPacket.isPacketOfType(pcpp::IPv4))
-        {
-            uint16_t srcPort{0}, dstPort{0};
-
-            // extract ports
-            if (parsedPacket.isPacketOfType(pcpp::TCP))
-            {
-                pcpp::TcpLayer* TcpLayer = parsedPacket.getLayerOfType<pcpp::TcpLayer>();
-                srcPort = TcpLayer->getSrcPort();
-                dstPort = TcpLayer->getDstPort();
-            }
-            else if (parsedPacket.isPacketOfType(pcpp::UDP))
-            {
-                pcpp::UdpLayer* UdpLayer = parsedPacket.getLayerOfType<pcpp::UdpLayer>();
-                srcPort = UdpLayer->getSrcPort();
-                dstPort = UdpLayer->getDstPort();
-            }
-
-            // extract IPs
-            if (dstPort != 0 && srcPort != 0)
-            {
-                pcpp::IPv4Address srcIP = parsedPacket.getLayerOfType<pcpp::IPv4Layer>()->getSrcIPv4Address();
-                pcpp::IPv4Address dstIP = parsedPacket.getLayerOfType<pcpp::IPv4Layer>()->getDstIPv4Address();
-
-                int packetLen = rawPacket.getRawDataLen();
-
-                // print source and dest IPs
-                if (srcPort < dstPort)
-                {
-                    splitter.add_packet(dstIP, dstPort, srcIP, srcPort, rawPacket.getPacketTimeStamp(), packetLen);
-                }
-                else
-                {
-                    splitter.add_packet(srcIP, srcPort, dstIP, dstPort, rawPacket.getPacketTimeStamp(), packetLen);
-                }
-            }
-        }
+        splitter.consumePacket(parsedPacket);
     }
 
     // close the file
     reader.close();
 }
 
+static bool onPacketArrivesBlockingMode(pcpp::RawPacket* packet, pcpp::PcapLiveDevice* dev, void* cookie)
+{
+    static size_t packetCounter = 0;
+    ++packetCounter;
+
+    // extract the Splitter object form the cookie
+    Splitter* splitter = (Splitter*)cookie;
+
+    // parsed the raw packet
+    pcpp::Packet parsedPacket(packet);
+
+    splitter->consumePacket(parsedPacket);
+
+    std::cout << "Packets captured: " << packetCounter << '\r';
+
+    // return false means we don't want to stop capturing after this callback
+    return false;
+}
+
 void liveCapture(const char* intface)
 {
-    auto& listInstance = pcpp::PcapLiveDeviceList::getInstance();
     pcpp::PcapLiveDevice* dev = pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDeviceByIpOrName(intface);
-    const std::vector<pcpp::PcapLiveDevice*>& devList = pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList();
-    // before capturing packets let's print some info about this interface
-    std::cout
-        << "Interface info:" << std::endl
-        << "   Interface name:        " << dev->getName() << std::endl // get interface name
-        << "   Interface description: " << dev->getDesc() << std::endl // get interface description
-        << "   MAC address:           " << dev->getMacAddress() << std::endl // get interface MAC address
-        << "   Default gateway:       " << dev->getDefaultGateway() << std::endl // get default gateway
-        << "   Interface MTU:         " << dev->getMtu() << std::endl; // get interface MTU
 
-    if (dev->getDnsServers().size() > 0)
-        std::cout << "   DNS server:            " << dev->getDnsServers().at(0) << std::endl;
+    if (dev)
+    {
+        if (!dev->open())
+        {
+            std::cerr << "Cannot open device" << std::endl;
+        }
+        else
+        {
+            std::cout << "Starting live capture on: " << intface << "\n";
+            auto splitter = std::make_unique<Splitter>("live-capture");
+
+            // start blocking (main thread) capture with infinite timeout
+            dev->startCaptureBlockingMode(onPacketArrivesBlockingMode, splitter.get(), 0);
+        }
+    }
+    else
+    {
+        std::cerr << "Interface: " << intface << " not found\n";
+        std::cout << "Listing available interfaces:\n";
+
+		const std::vector<pcpp::PcapLiveDevice*>& devList = pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList();
+        for (const auto& dev : devList)
+        {
+            std::cout << "Interface name: " << dev->getName() << "\tInterface description: " << dev->getDesc() << '\n';
+        }
+    }
 }
 
 int main(int argc, char* argv[])

@@ -20,7 +20,8 @@ public:
 
     Splitter(const char* dataSource);
     ~Splitter();
-    void add_packet(pcpp::IPv4Address clientIP, uint16_t clientPort,
+    void consumePacket(const pcpp::Packet& packet);
+    void addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort,
         pcpp::IPv4Address serverIP, uint16_t serverPort, timespec timestamp, int len);
     static bool shouldReset(const Connection& conn);
 

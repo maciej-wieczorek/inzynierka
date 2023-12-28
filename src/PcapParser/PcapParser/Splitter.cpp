@@ -3,6 +3,11 @@
 #include "Splitter.h"
 #include "Utilities.h"
 
+#include "pcapplusplus/Packet.h"
+#include "pcapplusplus/IPv4Layer.h"
+#include "pcapplusplus/TcpLayer.h"
+#include "pcapplusplus/UdpLayer.h"
+
 Splitter::Splitter(const char* dataSource)
     : m_dataSource{ dataSource }
 {
@@ -29,7 +34,50 @@ Splitter::~Splitter()
     }
 }
 
-void Splitter::add_packet(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::IPv4Address serverIP, uint16_t serverPort, timespec timestamp, int len)
+void Splitter::consumePacket(const pcpp::Packet& packet)
+{
+    // verify the packet is IPv4
+    if (packet.isPacketOfType(pcpp::IPv4))
+    {
+        uint16_t srcPort{ 0 }, dstPort{ 0 };
+
+        // extract ports
+        if (packet.isPacketOfType(pcpp::TCP))
+        {
+            pcpp::TcpLayer* TcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();
+            srcPort = TcpLayer->getSrcPort();
+            dstPort = TcpLayer->getDstPort();
+        }
+        else if (packet.isPacketOfType(pcpp::UDP))
+        {
+            pcpp::UdpLayer* UdpLayer = packet.getLayerOfType<pcpp::UdpLayer>();
+            srcPort = UdpLayer->getSrcPort();
+            dstPort = UdpLayer->getDstPort();
+        }
+
+        // extract IPs
+        if (dstPort != 0 && srcPort != 0)
+        {
+            pcpp::IPv4Address srcIP = packet.getLayerOfType<pcpp::IPv4Layer>()->getSrcIPv4Address();
+            pcpp::IPv4Address dstIP = packet.getLayerOfType<pcpp::IPv4Layer>()->getDstIPv4Address();
+
+            pcpp::RawPacket* rawPacket = packet.getRawPacket();
+            int packetLen = rawPacket->getRawDataLen();
+
+            // add packet to connections
+            if (srcPort < dstPort)
+            {
+                addPacket(dstIP, dstPort, srcIP, srcPort, rawPacket->getPacketTimeStamp(), packetLen);
+            }
+            else
+            {
+                addPacket(srcIP, srcPort, dstIP, dstPort, rawPacket->getPacketTimeStamp(), packetLen);
+            }
+        }
+    }
+}
+
+void Splitter::addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::IPv4Address serverIP, uint16_t serverPort, timespec timestamp, int len)
 {
     std::stringstream key;
     key << clientIP << ':' << clientPort << '-' << serverIP << ':' << serverPort;
