@@ -560,3 +560,4 @@ FodyWeavers.xsd
 .vscode/
 connections*/
 local_graphs/
+src/PcapParser/*/graphs.csv
