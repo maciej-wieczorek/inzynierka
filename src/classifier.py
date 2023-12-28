@@ -3,12 +3,78 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
-from torch_geometric.nn import GCNConv, GINConv
-from torch_geometric.nn import global_mean_pool, global_add_pool
+from torch_geometric.nn import GCNConv, GINConv, GraphConv
+from torch_geometric.nn import global_mean_pool, global_add_pool, TopKPooling, global_max_pool as gmp, global_mean_pool as gap
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 
 from data_builder import NUM_GROUPS, build_data
+
+# Define our GCN class as a pytorch Module
+class GCN2(torch.nn.Module):
+    def __init__(self, dim_o):
+        super(GCN2, self).__init__()
+        self.conv1 = GraphConv(NUM_GROUPS, 128)
+        self.pool1 = TopKPooling(128, ratio=0.5)
+        self.bn1 = BatchNorm1d(128)
+        
+        self.conv2 = GraphConv(128, 128)
+        self.pool2 = TopKPooling(128, ratio=0.5)
+        self.bn2 = BatchNorm1d(128)
+        
+        self.conv3 = GraphConv(128, 128)
+        self.pool3 = TopKPooling(128, ratio=0.5)
+        self.bn3 = BatchNorm1d(128)
+        
+        self.conv4 = GraphConv(128, 128)
+        self.pool4 = TopKPooling(128, ratio=0.5)
+        self.bn4 = BatchNorm1d(128)
+        
+        self.conv5 = GraphConv(128, 128)
+        self.pool5 = TopKPooling(128, ratio=0.5)
+        self.bn5 = BatchNorm1d(128)
+        
+        self.lin1 = torch.nn.Linear(256, 128)
+        self.lin2 = torch.nn.Linear(128, 64 )
+        self.lin3 = torch.nn.Linear(64, dim_o)
+        
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.bn1(x)
+        x, edge_index, _, batch, _, _ = self.pool1(x, edge_index, None, batch)
+        x1 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        
+        x = F.relu(self.conv2(x, edge_index))
+        x = self.bn2(x)
+        x, edge_index, _, batch, _, _ = self.pool2(x, edge_index, None, batch)
+        x2 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        
+        x = F.relu(self.conv3(x, edge_index))
+        x = self.bn3(x)
+        x = F.dropout(x, p=0.2, training=self.training)
+        x, edge_index, _, batch, _, _ = self.pool3(x, edge_index, None, batch)
+        x3 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        
+        x = F.relu(self.conv4(x, edge_index))
+        x = self.bn4(x)
+        x, edge_index, _, batch, _, _ = self.pool4(x, edge_index, None, batch)
+        x4 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)         
+        
+        x = F.relu(self.conv5(x, edge_index))
+        x = self.bn5(x)
+        x, edge_index, _, batch, _, _ = self.pool5(x, edge_index, None, batch)
+        x5 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1) 
+       
+        x = x1+x2+x3+x4+x5
+        x = F.relu(self.lin1(x))
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.relu(self.lin2(x))
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.log_softmax(self.lin3(x), dim=-1)
+        
+        return x
 
 class GCN(torch.nn.Module):
     """GCN"""
@@ -36,11 +102,10 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, print_every=1):
+def train(model, loader, epochs=100, print_every=1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    epochs = 100
 
     model.train()
     for epoch in range(epochs+1):
@@ -71,11 +136,19 @@ def test(model, loader):
     loss = 0
     acc = 0
 
+    model_pred = []
+    correct_pred = []
+
     for data in loader:
         data = data.to(device)
         out = model(data.x, data.edge_index, data.batch)
         loss += criterion(out, data.y) / len(loader)
         acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
+        model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
+        correct_pred.extend(list(data.y.cpu().numpy()))
+
+    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred)
+    plt.show()
 
     return loss, acc
 
@@ -143,8 +216,8 @@ def train_model():
     test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    gcn = GCN(dim_h=32, dim_o=len(labels)).to(device)
-    gcn = train(gcn, train_loader)
+    gcn = GCN2(dim_o=len(labels)).to(device)
+    gcn = train(gcn, train_loader, epochs=40)
     test_loss, test_acc = test(gcn, test_loader)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 

@@ -5,6 +5,18 @@ import pandas as pd
 
 NUM_GROUPS = 30
 
+def z_scale(input_list):
+    if input_list and len(input_list) > 0:
+        mean_value = sum(input_list) / len(input_list)
+        std_deviation = (sum((x - mean_value) ** 2 for x in input_list) / len(input_list)) ** 0.5
+        if std_deviation != 0:
+            z_scaled_list = [(x - mean_value) / std_deviation for x in input_list]
+            return z_scaled_list
+        else:
+            return input_list
+    else:
+        return input_list
+
 def build_graph_tensor_representation(label_index, graph):
     node_data = []
     edges = []
@@ -27,7 +39,7 @@ def build_graph_tensor_representation(label_index, graph):
 
     x_data = torch.from_numpy(np.eye(NUM_GROUPS, dtype=np.float32)[node_data])
     edge_index_data = torch.tensor(edges, dtype=torch.int64)
-    edge_attr_data = torch.tensor(edge_data, dtype=torch.float32)
+    edge_attr_data = torch.tensor(z_scale(edge_data), dtype=torch.float32)
     y_data = torch.tensor([label_index], dtype=torch.int64)
 
     return Data(x=x_data, edge_index=edge_index_data, edge_attr=edge_attr_data,y=y_data)
@@ -38,8 +50,9 @@ def build_data():
 
     df = pd.read_csv('graphs.csv')
     df = df[df['datasource'] == 'VPN/NONVPN NETWORK APPLICATION TRAFFIC DATASET (VNAT)']
-    df = df[~df['label'].str.contains('scp')]
-    df = df[~df['label'].str.contains('sftp')]
+    # df = df[~df['label'].str.contains('scp')]
+    # df = df[~df['label'].str.contains('sftp')]
+    # df = df[df['label'].str.contains('nonvpn')]
 
     labels = list(df['label'].unique())
 
