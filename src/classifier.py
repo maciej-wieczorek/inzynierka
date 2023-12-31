@@ -9,14 +9,15 @@ from torch_geometric.loader import DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+import pickle
 
-from data_builder import NUM_GROUPS, build_data
+from data_builder import build_data
 
 # Define our GCN class as a pytorch Module
 class GCN2(torch.nn.Module):
-    def __init__(self, dim_o):
+    def __init__(self, dim_i, dim_o):
         super(GCN2, self).__init__()
-        self.conv1 = GraphConv(NUM_GROUPS, 128)
+        self.conv1 = GraphConv(dim_i, 128)
         self.pool1 = TopKPooling(128, ratio=0.5)
         self.bn1 = BatchNorm1d(128)
         
@@ -40,7 +41,9 @@ class GCN2(torch.nn.Module):
         self.lin2 = torch.nn.Linear(128, 64 )
         self.lin3 = torch.nn.Linear(64, dim_o)
         
-    def forward(self, x, edge_index, batch):
+    def forward(self, data, batch):
+        x, edge_index = data.x, data.edge_index
+
         x = F.relu(self.conv1(x, edge_index))
         x = self.bn1(x)
         x, edge_index, _, batch, _, _ = self.pool1(x, edge_index, None, batch)
@@ -78,14 +81,17 @@ class GCN2(torch.nn.Module):
 
 class GCN(torch.nn.Module):
     """GCN"""
-    def __init__(self, dim_h, dim_o):
+    def __init__(self, dim_i, dim_h, dim_o):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(NUM_GROUPS, dim_h)
+        self.conv1 = GCNConv(dim_i, dim_h)
         self.conv2 = GCNConv(dim_h, dim_h)
         self.conv3 = GCNConv(dim_h, dim_h)
         self.lin = Linear(dim_h, dim_o)
 
-    def forward(self, x, edge_index, batch):
+    def forward(self, data, batch):
+        x = data.x
+        edge_index = data.edge_index
+
         # Node embeddings 
         h = self.conv1(x, edge_index)
         h = h.relu()
@@ -116,7 +122,7 @@ def train(model, loader, val_loader, epochs=100, print_every=1):
         for data in loader:
             data = data.to(device, non_blocking=True)
             optimizer.zero_grad()
-            out = model(data.x, data.edge_index, data.batch)
+            out = model(data, data.batch)
             loss = criterion(out, data.y)
             total_loss += loss / len(loader)
             acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
@@ -142,7 +148,7 @@ def test(model, loader, conf_matrix=False):
 
     for data in loader:
         data = data.to(device)
-        out = model(data.x, data.edge_index, data.batch)
+        out = model(data, data.batch)
         loss += criterion(out, data.y) / len(loader)
         acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
 
@@ -171,44 +177,67 @@ def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
-def split_dataset(dataset, test_size=0.2, validation_size=0.1, random_state=42):
-    # Extract labels and indices
-    labels = [data.y[0] for data in dataset]
+def balance_dataset(dataset):
+    # Count the number of examples for each class
+    num_examples_per_class = {}
+    for data in dataset:
+        label = data.y.item()
+        if label not in num_examples_per_class:
+            num_examples_per_class[label] = 0
+        num_examples_per_class[label] += 1
+
+    # Determine the target number of examples per class (minimum count)
+    target_num_examples = min(num_examples_per_class.values())
+
+    # Create a new list to store the balanced dataset
+    balanced_dataset = []
+
+    # Iterate through the dataset, keeping only the target number of examples for each class
+    for label, count in num_examples_per_class.items():
+        indices = [i for i, data in enumerate(dataset) if data.y.item() == label]
+        random.shuffle(indices)
+        selected_indices = indices[:target_num_examples]
+        balanced_dataset.extend([dataset[i] for i in selected_indices])
+
+    return balanced_dataset
+
+def split_dataset(dataset, test_size=0.2, validation_size=0.1, random_state=None):
     indices = list(range(len(dataset)))
 
-    # Split the dataset into training and temp (test + validation)
-    train_indices, temp_indices, train_labels, temp_labels = train_test_split(
-        indices, labels, test_size=(test_size + validation_size), stratify=labels, random_state=random_state)
+    train_indices, test_indices = train_test_split(indices, test_size=test_size, random_state=random_state)
+    train_indices, val_indices = train_test_split(train_indices, test_size=validation_size, random_state=random_state)
 
-    # Split the temp dataset into test and validation
-    test_indices, validation_indices, _, _ = train_test_split(
-        temp_indices, temp_labels, test_size=(validation_size / (test_size + validation_size)),
-        stratify=temp_labels, random_state=random_state)
+    train_dataset = [dataset[i] for i in train_indices]
+    test_dataset = [dataset[i] for i in test_indices]
+    val_dataset = [dataset[i] for i in val_indices]
 
-    # Create DataLoader for each split
-    train_sampler = torch.utils.data.SubsetRandomSampler(train_indices)
-    train_loader = DataLoader(dataset, batch_size=64, sampler=train_sampler)
+    return train_dataset, test_dataset, val_dataset
 
-    test_sampler = torch.utils.data.SubsetRandomSampler(test_indices)
-    test_loader = DataLoader(dataset, batch_size=64, sampler=test_sampler)
+def write_dataset(dataset, labels):
+    with open('dataset.pickle', 'wb') as file:
+        pickle.dump(dataset, file)
+    with open('labels.pickle', 'wb') as file:
+        pickle.dump(labels, file)
 
-    validation_sampler = torch.utils.data.SubsetRandomSampler(validation_indices)
-    validation_loader = DataLoader(dataset, batch_size=64, sampler=validation_sampler)
-
-    return train_loader, test_loader, validation_loader
+def read_dataset():
+    with open('dataset.pickle', 'rb') as file:
+        dataset = pickle.load(file)
+    with open('labels.pickle', 'rb') as file:
+        labels = pickle.load(file)
+    
+    return dataset, labels
 
 def train_model():
     dataset, labels = build_data()
-    random.shuffle(dataset)
+    # write_dataset(dataset, labels)
+    # dataset, labels = read_dataset()
+
+    # dataset = balance_dataset(dataset)
+    # write_dataset(dataset, labels)
 
     print_dataset_info(dataset, labels, 'Full dataset')
 
-    # Create training, validation, and test sets
-    train_dataset = dataset[:int(len(dataset)*0.8)]
-    val_dataset   = dataset[int(len(dataset)*0.8):int(len(dataset)*0.9)]
-    test_dataset  = dataset[int(len(dataset)*0.9):]
-
-    #train_dataset, test_dataset, val_dataset = split_dataset(dataset)
+    train_dataset, test_dataset, val_dataset = split_dataset(dataset)
 
     print_dataset_info(train_dataset, labels, 'Training set')
     print_dataset_info(val_dataset, labels, 'Validation set')
@@ -220,8 +249,8 @@ def train_model():
     test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    gcn = GCN2(dim_o=len(labels)).to(device)
-    gcn = train(gcn, train_loader, val_loader, epochs=5)
+    gcn = GCN(dim_i=dataset[0].num_features, dim_h=16, dim_o=len(labels)).to(device)
+    gcn = train(gcn, train_loader, val_loader, epochs=50)
     test_loss, test_acc = test(gcn, test_loader, conf_matrix=True)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 
