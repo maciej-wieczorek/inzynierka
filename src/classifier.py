@@ -11,7 +11,7 @@ from sklearn.metrics import ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import pickle
 
-from data_builder import build_data
+from data_builder import build_data, build_data2
 
 # Define our GCN class as a pytorch Module
 class GCN2(torch.nn.Module):
@@ -228,8 +228,9 @@ def read_dataset():
     return dataset, labels
 
 def train_model():
-    dataset, labels = build_data()
-    # write_dataset(dataset, labels)
+    dataset, labels = build_data2(r'C:\Users\macie\Desktop\studia\inz\captures\VNAT_release_1\small')
+    # dataset, labels = build_data()
+    write_dataset(dataset, labels)
     # dataset, labels = read_dataset()
 
     # dataset = balance_dataset(dataset)
@@ -250,7 +251,7 @@ def train_model():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     gcn = GCN(dim_i=dataset[0].num_features, dim_h=16, dim_o=len(labels)).to(device)
-    gcn = train(gcn, train_loader, val_loader, epochs=50)
+    gcn = train(gcn, train_loader, val_loader, epochs=100)
     test_loss, test_acc = test(gcn, test_loader, conf_matrix=True)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 

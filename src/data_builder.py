@@ -3,6 +3,9 @@ from sklearn.preprocessing import StandardScaler
 import torch
 import numpy as np
 import pandas as pd
+from scapy.all import PcapReader
+from scapy.compat import raw
+import os
 
 NUM_GROUPS = 30
 
@@ -64,5 +67,44 @@ def build_data():
 
         print(f'Building data: {count}  ', end='\r')
         count += 1
+
+    return graph_data_list, labels
+
+def build_data2(captures_path):
+    CONNECTION_SIZE = 100
+    MAX_PACKET_SIZE = 1500
+
+    graph_data_list = []
+    labels = []
+
+    for filename in os.listdir(captures_path):
+        label = "-".join(filename.split('.')[0].split('_')[:2])
+        if label not in labels:
+            labels.append(label)
+
+    for filename in os.listdir(captures_path):
+        label = "-".join(filename.split('.')[0].split('_')[:2])
+        filepath = os.path.join(captures_path, filename)
+        if os.path.isfile(filepath):
+            x_data_list = []
+            with PcapReader(filepath) as pcap:
+                print(f'Reading: {filepath}')
+                count = 0
+                for packet in pcap:
+                    x = np.frombuffer(raw(packet), dtype=np.uint8)[0:MAX_PACKET_SIZE] / 255
+                    if len(x) < MAX_PACKET_SIZE:
+                        x = np.pad(x, pad_width=(0, MAX_PACKET_SIZE - len(x)), constant_values=0)
+                    x_data_list.append(x)
+
+                    if len(x_data_list) == CONNECTION_SIZE:
+                        x_data = torch.from_numpy(np.array(x_data_list, dtype=np.float32))
+                        edge_index_data = torch.tensor([[i, i+1] for i in range(len(x_data)-1)]).t().contiguous()
+                        y_data = torch.tensor([labels.index(label)], dtype=torch.int64)
+                        data = Data(x=x_data, edge_index=edge_index_data, y=y_data)
+                        graph_data_list.append(data)
+                        x_data_list = []
+
+                    count += 1
+                    print(f'{count} packets', end='\r')
 
     return graph_data_list, labels
