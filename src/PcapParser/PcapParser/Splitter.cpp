@@ -116,7 +116,7 @@ bool Splitter::shouldReset(const Connection& conn)
     {
         return true;
     }
-    else if (conn.getLastTimestamp() - conn.getFirstTimestamp() >= Splitter::maxTimeLenConnection * 1000)
+    else if (conn.getLastTimestamp() - conn.getFirstTimestamp() >= Splitter::maxTimeLenConnection * 1000000000)
     {
         return true;
     }
