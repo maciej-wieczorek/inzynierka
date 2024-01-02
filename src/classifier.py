@@ -1,18 +1,15 @@
-import random
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
-from torch_geometric.nn import GCNConv, GINConv, GraphConv
+from torch_geometric.nn import GCNConv, GraphConv
 from torch_geometric.nn import global_mean_pool, global_add_pool, TopKPooling, global_max_pool as gmp, global_mean_pool as gap
 from torch_geometric.loader import DataLoader
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import ConfusionMatrixDisplay
 from copy import deepcopy
 import matplotlib.pyplot as plt
-import pickle
 
-from data_builder import build_data, build_data2
+from data_builder import build_data, build_data2, write_dataset, read_dataset, balance_dataset, split_dataset, print_dataset_info
 
 # Define our GCN class as a pytorch Module
 class GCN2(torch.nn.Module):
@@ -57,7 +54,7 @@ class GCN2(torch.nn.Module):
         
         x = F.relu(self.conv3(x, edge_index))
         x = self.bn3(x)
-        # x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training)
         x, edge_index, _, batch, _, _ = self.pool3(x, edge_index, None, batch)
         x3 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
         
@@ -73,9 +70,9 @@ class GCN2(torch.nn.Module):
        
         x = x1+x2+x3+x4+x5
         x = F.relu(self.lin1(x))
-        # x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training)
         x = F.relu(self.lin2(x))
-        # x = F.dropout(x, p=0.5, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = F.log_softmax(self.lin3(x), dim=-1)
         
         return x
@@ -109,12 +106,14 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, val_loader, epochs=100, check_point_every=1):
+def train(model, loader, val_loader, epochs=100, patience=15):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    best_validation_score = 0.0
+    early_stop_counter = 0
+    best_val_loss = float('inf')
+
     model.train()
     for epoch in range(epochs+1):
         total_loss = 0
@@ -131,28 +130,32 @@ def train(model, loader, val_loader, epochs=100, check_point_every=1):
             loss.backward()
             optimizer.step()
 
-        if(epoch % check_point_every == 0):
-            val_loss, val_acc = test(model, val_loader)
-            if val_acc > best_validation_score:
-                best_model_state = deepcopy(model.state_dict())
-                best_validation_score = val_acc
-            print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
+        val_loss, val_acc = test(model, val_loader)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            early_stop_counter = 0
+            best_model_state = deepcopy(model.state_dict())
+            torch.save(model, 'model-train.pth')
+        else:
+            early_stop_counter += 1
+
+        print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
+
+        if early_stop_counter >= patience:
+            print(f"Early stopping at epoch {epoch} with validation loss: {best_val_loss}")
+            break
             
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
-    torch.save(model, 'model.pth')
     return model
 
 @torch.no_grad()
-def test(model, loader, conf_matrix=False):
+def test(model, loader):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
     loss = 0
     acc = 0
-
-    model_pred = []
-    correct_pred = []
 
     for data in loader:
         data = data.to(device)
@@ -160,117 +163,75 @@ def test(model, loader, conf_matrix=False):
         loss += criterion(out, data.y) / len(loader)
         acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
 
-        if conf_matrix:
-            model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
-            correct_pred.extend(list(data.y.cpu().numpy()))
-
-    if conf_matrix:
-        ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred)
-        plt.show()
-
     return loss, acc
 
-def print_class_distribution(dataset, labels):
-    class_distribution = np.array([data.y[0].tolist() for data in dataset])
-    unique_classes, class_counts = np.unique(class_distribution, return_counts=True)
-    for class_index, count in zip(unique_classes, class_counts):
-        print(f"Class {class_index} ({labels[class_index]}): {count} {round(100*count/class_distribution.size, 2)}%")
+@torch.no_grad()
+def conf_matrix(model, loader, labels):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.eval()
 
-def print_dataset_info(dataset, labels, name):
-    print(f'{name} = {len(dataset)} graphs')
-    print_class_distribution(dataset, labels)
-    print()
+    model_pred = []
+    correct_pred = []
+
+    for data in loader:
+        data = data.to(device)
+        out = model(data, data.batch)
+    
+        model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
+        correct_pred.extend(list(data.y.cpu().numpy()))
+
+    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred, display_labels=labels)
+    plt.show()
 
 def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
-def balance_dataset(dataset):
-    # Count the number of examples for each class
-    num_examples_per_class = {}
-    for data in dataset:
-        label = data.y.item()
-        if label not in num_examples_per_class:
-            num_examples_per_class[label] = 0
-        num_examples_per_class[label] += 1
-
-    # Determine the target number of examples per class (minimum count)
-    target_num_examples = min(num_examples_per_class.values())
-
-    # Create a new list to store the balanced dataset
-    balanced_dataset = []
-
-    # Iterate through the dataset, keeping only the target number of examples for each class
-    for label, count in num_examples_per_class.items():
-        indices = [i for i, data in enumerate(dataset) if data.y.item() == label]
-        random.shuffle(indices)
-        selected_indices = indices[:target_num_examples]
-        balanced_dataset.extend([dataset[i] for i in selected_indices])
-
-    return balanced_dataset
-
-def split_dataset(dataset, test_size=0.2, validation_size=0.1, random_state=None):
-    indices = list(range(len(dataset)))
-
-    train_indices, test_indices = train_test_split(indices, test_size=test_size, random_state=random_state)
-    train_indices, val_indices = train_test_split(train_indices, test_size=validation_size, random_state=random_state)
-
-    train_dataset = [dataset[i] for i in train_indices]
-    test_dataset = [dataset[i] for i in test_indices]
-    val_dataset = [dataset[i] for i in val_indices]
-
-    return train_dataset, test_dataset, val_dataset
-
-def write_dataset(dataset, labels):
-    with open('dataset.pickle', 'wb') as file:
-        pickle.dump(dataset, file)
-    with open('labels.pickle', 'wb') as file:
-        pickle.dump(labels, file)
-
-def read_dataset():
-    with open('dataset.pickle', 'rb') as file:
-        dataset = pickle.load(file)
-    with open('labels.pickle', 'rb') as file:
-        labels = pickle.load(file)
-    
-    return dataset, labels
-
 def train_model():
     # dataset, labels = build_data2(r'D:\captures\VPN\VNAT_release_1')
     # dataset, labels = build_data()
-    # write_dataset(dataset, labels)
-    dataset, labels = read_dataset()
+    # write_dataset(dataset, labels, 'dataset2.pickle', 'labels2.pickle')
+    dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
 
-    # dataset = balance_dataset(dataset)
-    # write_dataset(dataset, labels)
+    dataset = balance_dataset(dataset)
+    # write_dataset(dataset, labels, 'dataset1.pickle', 'labels1.pickle')
 
     print_dataset_info(dataset, labels, 'Full dataset')
 
-    train_dataset, test_dataset, val_dataset = split_dataset(dataset)
+    best_test_loss = float('inf')
+    while True:
+        train_dataset, test_dataset, val_dataset = split_dataset(dataset)
 
-    print_dataset_info(train_dataset, labels, 'Training set')
-    print_dataset_info(val_dataset, labels, 'Validation set')
-    print_dataset_info(test_dataset, labels, 'Test set')
+        # print_dataset_info(train_dataset, labels, 'Training set')
+        # print_dataset_info(val_dataset, labels, 'Validation set')
+        # print_dataset_info(test_dataset, labels, 'Test set')
 
-    # Create mini-batches
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    val_loader   = DataLoader(val_dataset, batch_size=64, shuffle=True)
-    test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
+        # Create mini-batches
+        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+        val_loader   = DataLoader(val_dataset, batch_size=64, shuffle=True)
+        test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    gcn = GCN2(dim_i=dataset[0].num_features, dim_o=len(labels)).to(device)
-    gcn = train(gcn, train_loader, val_loader, epochs=8)
-    test_loss, test_acc = test(gcn, test_loader, conf_matrix=True)
-    print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = GCN2(dim_i=dataset[0].num_features, dim_o=len(labels)).to(device)
+        model = train(model, train_loader, val_loader, epochs=100)
+        # conf_matrix(model, test_loader, labels)
+        test_loss, test_acc = test(model, test_loader)
+        if test_loss < best_test_loss:
+            best_test_loss = test_loss
+            print(f'Better model found. Saving...')
+            torch.save(model, 'model.pth')
+        print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = torch.load('model.pth').to(device)
-    dataset, labels = read_dataset()
+    model = torch.load('model1-gcn-best.pth').to(device)
+    dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
+    # dataset, labels = build_data()
     dataset_loader = DataLoader(dataset, batch_size=64, shuffle=True)
-    test_loss, test_acc = test(model, dataset_loader, conf_matrix=True)
-    print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
+    conf_matrix(model, dataset_loader, labels)
+    test_loss, test_acc = test(model, dataset_loader)
+    print(f'Dataset Loss: {test_loss:.2f} | Dataset Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
-    train_model()
-    # load_model()
+    # train_model()
+    load_model()
