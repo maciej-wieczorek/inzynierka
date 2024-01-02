@@ -53,9 +53,7 @@ def build_data():
 
     df = pd.read_csv('graphs.csv')
     df = df[df['datasource'] == 'VPN/NONVPN NETWORK APPLICATION TRAFFIC DATASET (VNAT)']
-    df = df[~df['label'].str.contains('nonvpn-voip')]
-    df = df[~df['label'].str.contains('nonvpn-ssh')]
-    # df = df[~df['label'].str.contains('sftp')]
+    # df = df[~df['label'].str.contains('scp')]
     # df = df[df['label'].str.contains('nonvpn')]
 
     labels = list(df['label'].unique())
@@ -71,11 +69,14 @@ def build_data():
     return graph_data_list, labels
 
 def build_data2(captures_path):
-    CONNECTION_SIZE = 100
+    CONNECTION_SIZE = 10
     MAX_PACKET_SIZE = 1500
+    PACKET_LIMIT_PER_LABEL = 40_000
 
     graph_data_list = []
     labels = []
+
+    labels_count = {}
 
     for filename in os.listdir(captures_path):
         label = "-".join(filename.split('.')[0].split('_')[:2])
@@ -84,6 +85,8 @@ def build_data2(captures_path):
 
     for filename in os.listdir(captures_path):
         label = "-".join(filename.split('.')[0].split('_')[:2])
+        if label not in labels_count:
+            labels_count[label] = 0
         filepath = os.path.join(captures_path, filename)
         if os.path.isfile(filepath):
             x_data_list = []
@@ -91,6 +94,9 @@ def build_data2(captures_path):
                 print(f'Reading: {filepath}')
                 count = 0
                 for packet in pcap:
+                    if labels_count[label] >= PACKET_LIMIT_PER_LABEL:
+                        break
+
                     x = np.frombuffer(raw(packet), dtype=np.uint8)[0:MAX_PACKET_SIZE] / 255
                     if len(x) < MAX_PACKET_SIZE:
                         x = np.pad(x, pad_width=(0, MAX_PACKET_SIZE - len(x)), constant_values=0)
@@ -104,6 +110,7 @@ def build_data2(captures_path):
                         graph_data_list.append(data)
                         x_data_list = []
 
+                    labels_count[label] += 1
                     count += 1
                     print(f'{count} packets', end='\r')
 

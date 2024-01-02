@@ -8,6 +8,7 @@ from torch_geometric.nn import global_mean_pool, global_add_pool, TopKPooling, g
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import ConfusionMatrixDisplay
+from copy import deepcopy
 import matplotlib.pyplot as plt
 import pickle
 
@@ -56,7 +57,7 @@ class GCN2(torch.nn.Module):
         
         x = F.relu(self.conv3(x, edge_index))
         x = self.bn3(x)
-        x = F.dropout(x, p=0.2, training=self.training)
+        # x = F.dropout(x, p=0.2, training=self.training)
         x, edge_index, _, batch, _, _ = self.pool3(x, edge_index, None, batch)
         x3 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
         
@@ -72,9 +73,9 @@ class GCN2(torch.nn.Module):
        
         x = x1+x2+x3+x4+x5
         x = F.relu(self.lin1(x))
-        x = F.dropout(x, p=0.2, training=self.training)
+        # x = F.dropout(x, p=0.2, training=self.training)
         x = F.relu(self.lin2(x))
-        x = F.dropout(x, p=0.5, training=self.training)
+        # x = F.dropout(x, p=0.5, training=self.training)
         x = F.log_softmax(self.lin3(x), dim=-1)
         
         return x
@@ -108,11 +109,12 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, val_loader, epochs=100, print_every=1):
+def train(model, loader, val_loader, epochs=100, check_point_every=1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
+    best_validation_score = 0.0
     model.train()
     for epoch in range(epochs+1):
         total_loss = 0
@@ -129,10 +131,16 @@ def train(model, loader, val_loader, epochs=100, print_every=1):
             loss.backward()
             optimizer.step()
 
-        if(epoch % print_every == 0):
+        if(epoch % check_point_every == 0):
             val_loss, val_acc = test(model, val_loader)
+            if val_acc > best_validation_score:
+                best_model_state = deepcopy(model.state_dict())
+                best_validation_score = val_acc
             print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
             
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+    torch.save(model, 'model.pth')
     return model
 
 @torch.no_grad()
@@ -228,10 +236,10 @@ def read_dataset():
     return dataset, labels
 
 def train_model():
-    dataset, labels = build_data2(r'C:\Users\macie\Desktop\studia\inz\captures\VNAT_release_1\small')
+    # dataset, labels = build_data2(r'D:\captures\VPN\VNAT_release_1')
     # dataset, labels = build_data()
-    write_dataset(dataset, labels)
-    # dataset, labels = read_dataset()
+    # write_dataset(dataset, labels)
+    dataset, labels = read_dataset()
 
     # dataset = balance_dataset(dataset)
     # write_dataset(dataset, labels)
@@ -250,10 +258,19 @@ def train_model():
     test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    gcn = GCN(dim_i=dataset[0].num_features, dim_h=16, dim_o=len(labels)).to(device)
-    gcn = train(gcn, train_loader, val_loader, epochs=100)
+    gcn = GCN2(dim_i=dataset[0].num_features, dim_o=len(labels)).to(device)
+    gcn = train(gcn, train_loader, val_loader, epochs=8)
     test_loss, test_acc = test(gcn, test_loader, conf_matrix=True)
+    print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
+
+def load_model():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = torch.load('model.pth').to(device)
+    dataset, labels = read_dataset()
+    dataset_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+    test_loss, test_acc = test(model, dataset_loader, conf_matrix=True)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
     train_model()
+    # load_model()
