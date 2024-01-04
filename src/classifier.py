@@ -189,7 +189,7 @@ def accuracy(pred_y, y):
 
 def train_model():
     # dataset, labels = build_data2(r'D:\captures\VPN\VNAT_release_1')
-    # dataset, labels = build_data()
+    dataset, labels = build_data()
     # write_dataset(dataset, labels, 'dataset2.pickle', 'labels2.pickle')
     dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
 
@@ -233,5 +233,5 @@ def load_model():
     print(f'Dataset Loss: {test_loss:.2f} | Dataset Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
-    # train_model()
-    load_model()
+    train_model()
+    # load_model()

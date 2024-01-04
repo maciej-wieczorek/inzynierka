@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUI</title>
+</head>
+<body>
+    <h1>GUI</h1>
+
+    <label for="serverInput">Server:</label>
+    <input type="text" id="serverInput" placeholder="ws://example.com/socket">
+    <button onclick="startWebSocket()">Start</button>
+
+    <div id="message-container"></div>
+
+    <script>
+        let socket;
+
+        function startWebSocket() {
+            const serverUrl = document.getElementById('serverInput').value;
+
+            if (!serverUrl) {
+                alert('Please enter a WebSocket server URL.');
+                return;
+            }
+
+            // Close the existing WebSocket connection if any
+            if (socket) {
+                socket.close();
+            }
+
+            // Create a new WebSocket connection
+            socket = new WebSocket(serverUrl);
+
+            // DOM element to display messages
+            const messageContainer = document.getElementById('message-container');
+            messageContainer.innerHTML = ''; // Clear previous messages when starting a new connection
+
+            socket.addEventListener('open', (event) => {
+                console.log('WebSocket connection opened:', event);
+            });
+
+            socket.addEventListener('message', (event) => {
+                messageContainer.innerText = `Received message: ${event.data}`; 
+            });
+
+            socket.addEventListener('close', (event) => {
+                console.log('WebSocket connection closed:', event);
+            });
+
+            socket.addEventListener('error', (event) => {
+                console.error('WebSocket error:', event);
+            });
+        }
+    </script>
+</body>
+</html>

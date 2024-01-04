@@ -561,3 +561,4 @@ FodyWeavers.xsd
 connections*/
 local_graphs/
 src/PcapParser/*/graphs.csv
+*.pickle
