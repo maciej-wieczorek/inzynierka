@@ -39,9 +39,7 @@ class GCN2(torch.nn.Module):
         self.lin2 = torch.nn.Linear(128, 64 )
         self.lin3 = torch.nn.Linear(64, dim_o)
         
-    def forward(self, data, batch):
-        x, edge_index = data.x, data.edge_index
-
+    def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
         x = self.bn1(x)
         x, edge_index, _, batch, _, _ = self.pool1(x, edge_index, None, batch)
@@ -81,15 +79,12 @@ class GCN(torch.nn.Module):
     """GCN"""
     def __init__(self, dim_i, dim_h, dim_o):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(dim_i, dim_h)
-        self.conv2 = GCNConv(dim_h, dim_h)
-        self.conv3 = GCNConv(dim_h, dim_h)
+        self.conv1 = GCNConv(dim_i, dim_h).jittable()
+        self.conv2 = GCNConv(dim_h, dim_h).jittable()
+        self.conv3 = GCNConv(dim_h, dim_h).jittable()
         self.lin = Linear(dim_h, dim_o)
 
-    def forward(self, data, batch):
-        x = data.x
-        edge_index = data.edge_index
-
+    def forward(self, x, edge_index, batch):
         # Node embeddings 
         h = self.conv1(x, edge_index)
         h = h.relu()
@@ -106,7 +101,7 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, val_loader, epochs=100, patience=15):
+def train(model, loader, val_loader, epochs=10, patience=5):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -123,7 +118,7 @@ def train(model, loader, val_loader, epochs=100, patience=15):
         for data in loader:
             data = data.to(device, non_blocking=True)
             optimizer.zero_grad()
-            out = model(data, data.batch)
+            out = model(data.x, data.edge_index, data.batch)
             loss = criterion(out, data.y)
             total_loss += loss / len(loader)
             acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
@@ -135,7 +130,6 @@ def train(model, loader, val_loader, epochs=100, patience=15):
             best_val_loss = val_loss
             early_stop_counter = 0
             best_model_state = deepcopy(model.state_dict())
-            torch.save(model, 'model-train.pth')
         else:
             early_stop_counter += 1
 
@@ -159,7 +153,7 @@ def test(model, loader):
 
     for data in loader:
         data = data.to(device)
-        out = model(data, data.batch)
+        out = model(data.x, data.edge_index, data.batch)
         loss += criterion(out, data.y) / len(loader)
         acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
 
@@ -175,7 +169,7 @@ def conf_matrix(model, loader, labels):
 
     for data in loader:
         data = data.to(device)
-        out = model(data, data.batch)
+        out = model(data.x, data.edge_index, data.batch)
     
         model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
         correct_pred.extend(list(data.y.cpu().numpy()))
@@ -189,8 +183,8 @@ def accuracy(pred_y, y):
 
 def train_model():
     # dataset, labels = build_data2(r'D:\captures\VPN\VNAT_release_1')
-    dataset, labels = build_data()
-    # write_dataset(dataset, labels, 'dataset2.pickle', 'labels2.pickle')
+    # dataset, labels = build_data()
+    # write_dataset(dataset, labels, 'dataset1.pickle', 'labels1.pickle')
     dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
 
     dataset = balance_dataset(dataset)
@@ -212,19 +206,20 @@ def train_model():
         test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = GCN2(dim_i=dataset[0].num_features, dim_o=len(labels)).to(device)
+        model = GCN(dim_i=dataset[0].num_features, dim_h=32, dim_o=len(labels)).to(device)
         model = train(model, train_loader, val_loader, epochs=100)
+        model = torch.jit.script(model)
         # conf_matrix(model, test_loader, labels)
         test_loss, test_acc = test(model, test_loader)
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             print(f'Better model found. Saving...')
-            torch.save(model, 'model.pth')
+            torch.jit.save(model, 'model.pt')
         print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = torch.load('model1-gcn-best.pth').to(device)
+    model = torch.jit.load('model.pt').to(device)
     dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
     # dataset, labels = build_data()
     dataset_loader = DataLoader(dataset, batch_size=64, shuffle=True)
@@ -233,5 +228,5 @@ def load_model():
     print(f'Dataset Loss: {test_loss:.2f} | Dataset Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
-    train_model()
-    # load_model()
+    # train_model()
+    load_model()

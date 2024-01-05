@@ -1,33 +1,28 @@
 #pragma once
 
+#include "Connection.h"
+
+#include <Packet.h>
+
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
 
-#include "Connection.h"
+class App;
 
 class Splitter
 {
 public:
-    static constexpr size_t minSizeConnection = 100;
-    static constexpr size_t maxSizeConnection = 1000;
-    static constexpr size_t maxTotalByteSizeConnection = 1024 * 1024; // 1MB
-    static constexpr size_t maxTimeLenConnection = 60; // 60s
 
-    static constexpr const char* graphsFilename = "graphs.csv";
-    static constexpr const char* csvHeader = "client,server,datasource,graph";
-
-    Splitter(const char* dataSource);
+    Splitter(App* app) : m_app{ app } {};
     ~Splitter();
-    void consumePacket(const pcpp::Packet& packet);
+    void consumePacket(pcpp::Packet&& packet);
     void addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort,
-        pcpp::IPv4Address serverIP, uint16_t serverPort, timespec timestamp, int len);
-    static bool shouldReset(const Connection& conn);
+        pcpp::IPv4Address serverIP, uint16_t serverPort, pcpp::Packet&& packet);
 
 private:
     std::map<std::string, Connection> m_connections;
-    std::ofstream m_graphsFile;
-    std::string m_dataSource;
+    App* m_app;
 };
 

@@ -1,38 +1,27 @@
+#include "App.h"
 #include "Splitter.h"
 #include "Utilities.h"
 
-#include "Packet.h"
-#include "IPv4Layer.h"
-#include "TcpLayer.h"
-#include "UdpLayer.h"
-
-Splitter::Splitter(const char* dataSource)
-    : m_dataSource{ dataSource }
-{
-    if (std::filesystem::exists(graphsFilename))
-    {
-        m_graphsFile = std::ofstream{ graphsFilename, std::ios::app }; // open for appending
-    }
-    else
-    {
-        m_graphsFile = std::ofstream{ graphsFilename };
-        m_graphsFile << csvHeader << '\n';
-    }
-}
+#include <Packet.h>
+#include <IPv4Layer.h>
+#include <TcpLayer.h>
+#include <UdpLayer.h>
 
 Splitter::~Splitter()
 {
-    // Dump remaining connections
-    for (auto& find : m_connections)
+    // Handle remaining connections
+    for (auto& it : m_connections)
     {
-        if (find.second.getCountPackets() >= Splitter::minSizeConnection)
-        {
-            find.second.save(m_graphsFile, m_dataSource.c_str());
-        }
+		Connection& connection = it.second;
+		if (getGrouper().canGroup(connection.getContent()))
+		{
+            m_app->processConnection(connection);
+		}
+		connection.reset();
     }
 }
 
-void Splitter::consumePacket(const pcpp::Packet& packet)
+void Splitter::consumePacket(pcpp::Packet&& packet)
 {
     // verify the packet is IPv4
     if (packet.isPacketOfType(pcpp::IPv4))
@@ -59,66 +48,43 @@ void Splitter::consumePacket(const pcpp::Packet& packet)
             pcpp::IPv4Address srcIP = packet.getLayerOfType<pcpp::IPv4Layer>()->getSrcIPv4Address();
             pcpp::IPv4Address dstIP = packet.getLayerOfType<pcpp::IPv4Layer>()->getDstIPv4Address();
 
-            pcpp::RawPacket* rawPacket = packet.getRawPacket();
-            int packetLen = rawPacket->getRawDataLen();
-
             // add packet to connections
             if (srcPort < dstPort)
             {
-                addPacket(dstIP, dstPort, srcIP, srcPort, rawPacket->getPacketTimeStamp(), packetLen);
+                addPacket(dstIP, dstPort, srcIP, srcPort, std::forward<pcpp::Packet>(packet));
             }
             else
             {
-                addPacket(srcIP, srcPort, dstIP, dstPort, rawPacket->getPacketTimeStamp(), packetLen);
+                addPacket(srcIP, srcPort, dstIP, dstPort, std::forward<pcpp::Packet>(packet));
             }
         }
     }
 }
 
-void Splitter::addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::IPv4Address serverIP, uint16_t serverPort, timespec timestamp, int len)
+void Splitter::addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::IPv4Address serverIP, uint16_t serverPort, pcpp::Packet&& packet)
 {
+
     std::stringstream key;
     key << clientIP << ':' << clientPort << '-' << serverIP << ':' << serverPort;
-    const auto& find = m_connections.find(key.str());
-    if (find == m_connections.end())
+    auto it = m_connections.find(key.str());
+    if (it == m_connections.end())
     {
         Connection connection{clientIP, clientPort, serverIP, serverPort};
-        connection.addPacket(timestamp, len);
+        connection.addPacket(std::forward<pcpp::Packet>(packet));
 
-        m_connections.insert(std::pair<std::string, Connection>{ key.str(), std::move(connection) });
+        m_connections.emplace(key.str(), std::move(connection));
     }
     else
     {
-        if (shouldReset(find->second))
+        Connection& connection = it->second;
+        if (getGrouper().shouldGroup(connection.getContent()))
         {
-            find->second.save(m_graphsFile, m_dataSource.c_str());
-            find->second.reset();
+            m_app->processConnection(connection);
+
+            connection.reset();
         }
 
-        find->second.addPacket(timestamp, len);
+        connection.addPacket(std::forward<pcpp::Packet>(packet));
     }
-}
-
-bool Splitter::shouldReset(const Connection& conn)
-{
-    if (conn.getCountPackets() < Splitter::minSizeConnection)
-    {
-        return false;
-    }
-
-    if (conn.getCountPackets() >= Splitter::maxSizeConnection)
-    {
-        return true;
-    }
-    else if (conn.getTotalSizePackets() >= Splitter::maxTotalByteSizeConnection)
-    {
-        return true;
-    }
-    else if (conn.getLastTimestamp() - conn.getFirstTimestamp() >= Splitter::maxTimeLenConnection * 1000000000)
-    {
-        return true;
-    }
-
-    return false;
 }
 

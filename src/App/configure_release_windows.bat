@@ -17,4 +17,5 @@ if not exist npcap-sdk\ (
 )
 
 cd ..\..
+vcpkg install uwebsockets:x64-windows
 cmake -A x64 -G "Visual Studio 17 2022" -S src -B src\build_release -DCMAKE_PREFIX_PATH=%cd%\deps\release\libtorch\libtorch -DPcapPlusPlus_ROOT=%cd%\deps\release\pcapplusplus -DPCAP_ROOT=%cd%\deps\release\npcap-sdk -DPacket_ROOT=%cd%\deps\release\npcap-sdk

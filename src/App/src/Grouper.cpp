@@ -1,10 +1,10 @@
 #include "Grouper.h"
 #include "Utilities.h"
 
-std::unique_ptr<Graph> Grouper::group(ConnectionContent& connection)
+std::unique_ptr<Graph> SizeDelayGrouper::group(const ConnectionContent& connection)
 {
     initGroups();
-    for (const auto& entry : connection)
+    for (const auto& entry : connection.entries)
     {
         int groupIndex = getGroupIndex(entry.size);
         groups[groupIndex].count += 1;
@@ -23,7 +23,7 @@ std::unique_ptr<Graph> Grouper::group(ConnectionContent& connection)
         }
     }
 
-    std::unique_ptr<Graph> graph = std::unique_ptr<Graph>(new Graph);
+    auto graph = std::make_unique<SizeDelayGraph>();
     for (unsigned int i = 0; i < numGroups; ++i)
     {
         for (unsigned int j = 0; j < numGroups; ++j)
@@ -31,7 +31,7 @@ std::unique_ptr<Graph> Grouper::group(ConnectionContent& connection)
             if (groups[i].delaysCount[j] > 0)
             {
                 float avgDelay = groups[i].delaysSum[j] / groups[i].delaysCount[j];
-                graph->edgeList.push_back(Edge{ i, j, avgDelay });
+                graph->edgeList.push_back(SizeDelayGraph::Edge{ i, j, avgDelay });
             }
         }
     }
@@ -39,7 +39,35 @@ std::unique_ptr<Graph> Grouper::group(ConnectionContent& connection)
     return std::move(graph);
 }
 
-void Grouper::initGroups()
+bool SizeDelayGrouper::canGroup(const ConnectionContent& connection)
+{
+    return connection.getCountPackets() >= minSizeConnection;
+}
+
+bool SizeDelayGrouper::shouldGroup(const ConnectionContent& connection)
+{
+    if (canGroup(connection))
+    {
+		if (connection.getCountPackets() >= maxSizeConnection)
+		{
+			return true;
+		}
+		else if (connection.getTotalSizePackets() >= maxTotalByteSizeConnection)
+		{
+			return true;
+		}
+		else if (connection.getLastTimestamp() - connection.getFirstTimestamp() >= maxTimeLenConnection * 1000000000)
+		{
+			return true;
+		}
+    }
+    else
+    {
+        return false;
+    }
+}
+
+void SizeDelayGrouper::initGroups()
 {
     unsigned int sizeStart = 40;
     unsigned int sizeEnd = 1520;
@@ -66,7 +94,7 @@ void Grouper::initGroups()
     }
 }
 
-int Grouper::getGroupIndex(unsigned int size)
+int SizeDelayGrouper::getGroupIndex(unsigned int size)
 {
     int left = 0;
     int right = numGroups - 1;
@@ -106,7 +134,7 @@ int Grouper::getGroupIndex(unsigned int size)
 
 Grouper& getGrouper()
 {
-    static Grouper grouper;
+    static SizeDelayGrouper grouper;
     return grouper;
 }
 

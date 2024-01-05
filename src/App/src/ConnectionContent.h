@@ -1,14 +1,30 @@
 #pragma once
 
+#include <IPv4Layer.h>
+
 #include <time.h>
+#include <memory>
 #include <vector>
 
-struct ConnectionEntry
+class ConnectionContent
 {
-    ConnectionEntry(timespec ts, int s);
-    timespec timestamp;
-    int size;
-};
+public:
+	struct Entry
+	{
+		Entry(timespec ts, int s, std::unique_ptr<char[]>&& packetData) : timestamp{ ts }, size{ s }, rawPacketData{ std::move(packetData) } {}
+		timespec timestamp;
+		int size;
+		std::unique_ptr<char[]> rawPacketData;
+	};
 
-using ConnectionContent = std::vector<ConnectionEntry>; 
+    size_t getCountPackets() const;
+    size_t getTotalSizePackets() const;
+    timespec getFirstTimestamp() const;
+    timespec getLastTimestamp() const;
+
+	void addEntry(timespec ts, int s, std::unique_ptr<char[]>&& packetData);
+
+    size_t m_totalSizePackets{};
+	std::vector<Entry> entries;
+};
 

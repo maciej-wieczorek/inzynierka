@@ -6,18 +6,29 @@
 #include <iostream>
 #include <fstream>
 
-struct GraphTensorData
+std::ostream& operator<<(std::ostream& os, const SizeDelayGraph& graph)
 {
-    torch::Tensor x;
-    torch::Tensor edge_index;
-};
+    size_t i = 0;
+    for (const auto& edge : graph.edgeList)
+    {
+        os << edge.indexStart << ',' << edge.indexEnd << ',' << edge.weight;
 
-GraphTensorData graphToTensor(const Graph& graph)
+        if (i != graph.edgeList.size() - 1)
+        {
+            os << ' ';
+        }
+        ++i;
+    }
+
+    return os;
+}
+
+GraphTensorData SizeDelayGraph::getAsTensors()
 {
     GraphTensorData data;
 
     std::vector<int64_t> nodes;
-    for (const auto& edge : graph.edgeList)
+    for (const auto& edge : edgeList)
     {
         if (std::find(nodes.begin(), nodes.end(), edge.indexStart) == nodes.end())
         {
@@ -40,49 +51,36 @@ GraphTensorData graphToTensor(const Graph& graph)
     torch::Tensor indices = torch::tensor(nodes);
     torch::Tensor x_data_1 = torch::one_hot(indices, Grouper::numGroups);
 
-    torch::Tensor edge_pool_1 = torch::zeros({ static_cast<long long>(nodes.size()), Grouper::numGroups });
-    torch::Tensor edge_pool_2 = torch::zeros({ static_cast<long long>(nodes.size()), Grouper::numGroups });
+    std::vector<float> edge_pool_1(nodes.size() * Grouper::numGroups, 0.f);
+    std::vector<float> edge_pool_2(nodes.size() * Grouper::numGroups, 0.f);
 
-    data.edge_index = torch::zeros({ 2, static_cast<long long>(graph.edgeList.size()) }, torch::kInt64);
+    std::vector<int64_t> edge_index_data(2 * edgeList.size(), 0);
 
-    for (size_t i = 0; i < graph.edgeList.size(); ++i)
+
+    for (size_t i = 0; i < edgeList.size(); ++i)
     {
-        const auto edge = graph.edgeList[i];
+        const auto edge = edgeList[i];
 
         auto indexStart = size_to_index[edge.indexStart];
         auto indexEnd = size_to_index[edge.indexEnd];
 
-        edge_pool_1[indexStart][indexEnd] = edge.weight;
-        edge_pool_2[indexEnd][indexStart] = edge.weight;
+        edge_pool_1[nodes.size() * indexStart + indexEnd] = edge.weight;
+        edge_pool_2[nodes.size() * indexEnd + indexStart] = edge.weight;
 
-        data.edge_index[0][i] = indexStart;
-        data.edge_index[1][i] = indexEnd;
+        edge_index_data[i] = indexStart;
+        edge_index_data[edgeList.size() + i] = indexEnd;
     }
 
-    data.x = torch::cat({ x_data_1, edge_pool_1, edge_pool_2 }, 1);
+    torch::Tensor x_data_2 = torch::from_blob(edge_pool_1.data(), {static_cast<long long>(nodes.size()), Grouper::numGroups}, torch::kFloat32);
+    torch::Tensor x_data_3 = torch::from_blob(edge_pool_2.data(), {static_cast<long long>(nodes.size()), Grouper::numGroups}, torch::kFloat32);
 
-
-    //std::cout << data.x << '\n';
-    //std::cout << data.edge_index << '\n';
-    //torch::save({ data.x, data.edge_index }, "tensors.pt");
+    data.x = torch::cat({ x_data_1, x_data_2, x_data_3 }, 1).clone();
+    data.edge_index = torch::from_blob(edge_index_data.data(), {2, static_cast<long long>(edgeList.size())}, torch::kInt64).clone();
 
     return data;
 }
 
-std::ostream& operator<<(std::ostream& os, const Graph& graph)
+GraphTensorData PacketListGraph::getAsTensors()
 {
-    // graphToTensor(graph);
-    size_t i = 0;
-    for (const auto& edge : graph.edgeList)
-    {
-        os << edge.indexStart << ',' << edge.indexEnd << ',' << edge.weight;
-
-        if (i != graph.edgeList.size() - 1)
-        {
-            os << ' ';
-        }
-        ++i;
-    }
-
-    return os;
+    return GraphTensorData{};
 }

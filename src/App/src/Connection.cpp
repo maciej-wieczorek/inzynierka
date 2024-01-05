@@ -1,4 +1,5 @@
 #include "Connection.h"
+#include "Packet.h"
 
 Connection::Connection(pcpp::IPv4Address clientIP, uint16_t clientPort,
     pcpp::IPv4Address serverIP, uint16_t serverPort)
@@ -10,42 +11,35 @@ Connection::Connection(pcpp::IPv4Address clientIP, uint16_t clientPort,
 
 void Connection::reset()
 {
-    m_content.clear();
-    m_totalSizePackets = 0;
+    m_content = ConnectionContent{};
 }
 
-void Connection::addPacket(timespec timestamp, int len)
+void Connection::addPacket(pcpp::Packet&& packet)
 {
-    m_content.emplace_back(timestamp, len);
-    m_totalSizePackets += len;
+	pcpp::RawPacket* rawPacket = packet.getRawPacket();
+	int len = rawPacket->getRawDataLen();
+    timespec timestamp = rawPacket->getPacketTimeStamp();
+
+    auto packetData = std::make_unique<char[]>(len);
+    memcpy(packetData.get(), rawPacket->getRawData(), len);
+
+    m_content.addEntry(timestamp, len, std::move(packetData));
 }
 
-size_t Connection::getCountPackets() const
-{
-    return m_content.size();
-}
-
-size_t Connection::getTotalSizePackets() const
-{
-    return m_totalSizePackets;
-}
-
-timespec Connection::getFirstTimestamp() const
-{
-    return m_content[0].timestamp;
-}
-
-timespec Connection::getLastTimestamp() const
-{
-    return m_content[m_content.size() - 1].timestamp;
-}
-
-void Connection::save(std::ostream& stream, const char* dataSource)
+GraphTensorData Connection::getAsGraph() const
 {
     std::unique_ptr<Graph> graph = getGrouper().group(m_content);
-    // graphs can be empty when all packets were of same group size
-    if (graph->edgeList.size() > 0)
-    {
-        stream << m_clinetIP << ':' << m_clientPort << ',' << m_serverIP << ':' << m_serverPort << ',' << dataSource << ",\"" << *graph << "\"\n";
-    }
+
+    return graph->getAsTensors();
 }
+
+ConnectionContent& Connection::getContent()
+{
+    return m_content;
+}
+
+const ConnectionContent& Connection::getContent() const
+{
+    return m_content;
+}
+
