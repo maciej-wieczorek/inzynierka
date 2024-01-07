@@ -24,6 +24,7 @@ std::unique_ptr<Graph> SizeDelayGrouper::group(const ConnectionContent& connecti
     }
 
     auto graph = std::make_unique<SizeDelayGraph>();
+    std::vector<float> delays;
     for (unsigned int i = 0; i < numGroups; ++i)
     {
         for (unsigned int j = 0; j < numGroups; ++j)
@@ -31,9 +32,16 @@ std::unique_ptr<Graph> SizeDelayGrouper::group(const ConnectionContent& connecti
             if (groups[i].delaysCount[j] > 0)
             {
                 float avgDelay = groups[i].delaysSum[j] / groups[i].delaysCount[j];
+				delays.push_back(avgDelay);
                 graph->edgeList.push_back(SizeDelayGraph::Edge{ i, j, avgDelay });
             }
         }
+    }
+
+    z_scale(delays);
+    for (size_t i = 0; i < graph->edgeList.size(); ++i)
+    {
+        graph->edgeList[i].weight = delays[i];
     }
 
     return std::move(graph);
@@ -134,7 +142,32 @@ int SizeDelayGrouper::getGroupIndex(unsigned int size)
 
 Grouper& getGrouper()
 {
-    static SizeDelayGrouper grouper;
+    //static SizeDelayGrouper grouper;
+    static PacketListGrouper grouper;
     return grouper;
 }
 
+std::unique_ptr<Graph> PacketListGrouper::group(const ConnectionContent& connection)
+{
+    auto graph = std::make_unique<PacketListGraph>();
+
+    for (const auto& entry : connection.entries)
+    {
+        graph->nodes.emplace_back(std::make_unique<char[]>(entry.size));
+        memcpy(graph->nodes[graph->nodes.size() - 1].get(), entry.rawPacketData.get(), entry.size);
+
+        graph->sizes.emplace_back(entry.size);
+    }
+
+    return std::move(graph);
+}
+
+bool PacketListGrouper::canGroup(const ConnectionContent& connection)
+{
+    return connection.getCountPackets() == sizeConnection;
+}
+
+bool PacketListGrouper::shouldGroup(const ConnectionContent& connection)
+{
+    return canGroup(connection);
+}

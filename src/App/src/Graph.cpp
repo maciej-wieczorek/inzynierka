@@ -82,5 +82,28 @@ GraphTensorData SizeDelayGraph::getAsTensors()
 
 GraphTensorData PacketListGraph::getAsTensors()
 {
-    return GraphTensorData{};
+    static constexpr long long featuresSize = 1500;
+    torch::Tensor x_data = torch::zeros({ static_cast<long long>(nodes.size()), featuresSize }, torch::kInt8);
+    int8_t* x_data_ptr = x_data.data_ptr<int8_t>();
+
+    for (size_t i = 0; i < nodes.size(); ++i)
+    {
+        memcpy(x_data_ptr + i * featuresSize, nodes[i].get(), std::min(static_cast<long long>(sizes[i]), featuresSize));
+    }
+
+    GraphTensorData data;
+
+    //data.x = x_data.to(torch::kFloat32) / 255;
+    data.x = x_data;
+
+    std::vector<int64_t> edge_index_data((nodes.size() - 1) * 2, 0);
+    for (size_t i = 0; i < nodes.size() - 1; ++i)
+    {
+        edge_index_data[i] = i;
+        edge_index_data[(nodes.size() - 1) + i] = i + 1;
+    }
+
+    data.edge_index = torch::from_blob(edge_index_data.data(), { 2, static_cast<long long>(nodes.size()-1) }, torch::kInt64).clone();
+
+    return data;
 }

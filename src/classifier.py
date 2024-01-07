@@ -5,11 +5,16 @@ from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
 from torch_geometric.nn import GCNConv, GraphConv
 from torch_geometric.nn import global_mean_pool, global_add_pool, TopKPooling, global_max_pool as gmp, global_mean_pool as gap
 from torch_geometric.loader import DataLoader
+from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
+from tqdm import tqdm
+import math
+
 from sklearn.metrics import ConfusionMatrixDisplay
 from copy import deepcopy
 import matplotlib.pyplot as plt
 
 from data_builder import build_data, build_data2, write_dataset, read_dataset, balance_dataset, split_dataset, print_dataset_info
+from dataset import PacketsDataset, PacketsDatapipe, get_labels
 
 # Define our GCN class as a pytorch Module
 class GCN2(torch.nn.Module):
@@ -101,31 +106,36 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, loader, val_loader, epochs=10, patience=5):
+def train(model, train_loader, train_num_batches, val_loader, val_num_batches, epochs=100, patience=10):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
     early_stop_counter = 0
     best_val_loss = float('inf')
+    best_model_state = None
 
-    model.train()
     for epoch in range(epochs+1):
+        model.train()
         total_loss = 0
         acc = 0
 
         # Train on batches
-        for data in loader:
-            data = data.to(device, non_blocking=True)
-            optimizer.zero_grad()
-            out = model(data.x, data.edge_index, data.batch)
-            loss = criterion(out, data.y)
-            total_loss += loss / len(loader)
-            acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
-            loss.backward()
-            optimizer.step()
+        with tqdm(train_loader, desc=f'Epoch {epoch + 1}/{epochs}', unit='batch', total=train_num_batches) as t:
+            for data in t:
+                data = data.to(device, non_blocking=True)
+                optimizer.zero_grad()
+                out = model(data.x, data.edge_index, data.batch)
+                loss = criterion(out, data.y)
+                total_loss += loss / train_num_batches
+                acc += accuracy(out.argmax(dim=1), data.y) / train_num_batches
+                loss.backward()
+                optimizer.step()
 
-        val_loss, val_acc = test(model, val_loader)
+                t.set_postfix(loss=total_loss.item() * (train_num_batches / (t.n+1)), acc=acc * (train_num_batches / (t.n+1)))
+                t.update()
+
+        val_loss, val_acc = test(model, val_loader, val_num_batches)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stop_counter = 0
@@ -133,7 +143,7 @@ def train(model, loader, val_loader, epochs=10, patience=5):
         else:
             early_stop_counter += 1
 
-        print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
+        # print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
 
         if early_stop_counter >= patience:
             print(f"Early stopping at epoch {epoch} with validation loss: {best_val_loss}")
@@ -144,18 +154,22 @@ def train(model, loader, val_loader, epochs=10, patience=5):
     return model
 
 @torch.no_grad()
-def test(model, loader):
+def test(model, loader, num_batches):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
     loss = 0
     acc = 0
 
-    for data in loader:
-        data = data.to(device)
-        out = model(data.x, data.edge_index, data.batch)
-        loss += criterion(out, data.y) / len(loader)
-        acc += accuracy(out.argmax(dim=1), data.y) / len(loader)
+    with tqdm(loader, desc=f'Test', unit='batch', total=num_batches) as t:
+        for data in t:
+            data = data.to(device)
+            out = model(data.x, data.edge_index, data.batch)
+            loss += criterion(out, data.y) / num_batches
+            acc += accuracy(out.argmax(dim=1), data.y) / num_batches
+
+            t.set_postfix(loss=loss.item() * (num_batches / (t.n+1)), acc=acc * (num_batches / (t.n+1)))
+            t.update()
 
     return loss, acc
 
@@ -174,59 +188,91 @@ def conf_matrix(model, loader, labels):
         model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
         correct_pred.extend(list(data.y.cpu().numpy()))
 
-    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred, display_labels=labels)
+    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred, display_labels=[labels[x] for x in sorted(list(set(model_pred)))])
     plt.show()
 
 def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
+packet_list_dataset_location = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\packet_list_dataset'
+size_delay_dataset_location = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\size_delay_dataset'
+dataset_location = packet_list_dataset_location
+dataset_type = 'disk'
+
 def train_model():
-    # dataset, labels = build_data2(r'D:\captures\VPN\VNAT_release_1')
-    # dataset, labels = build_data()
-    # write_dataset(dataset, labels, 'dataset1.pickle', 'labels1.pickle')
-    dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
+    batch_size = 64
 
-    dataset = balance_dataset(dataset)
-    # write_dataset(dataset, labels, 'dataset1.pickle', 'labels1.pickle')
+    if dataset_type == 'memory':
+        dataset = PacketsDataset('packet_size_delay_data', dataset_location)
+    elif dataset_type == 'disk':
+        dataset = PacketsDatapipe(dataset_location, batch_size)
 
-    print_dataset_info(dataset, labels, 'Full dataset')
+    labels = get_labels()
 
+    train_weight = 0.7
+    test_weight = 0.2
+    val_weight = 0.1
+
+    train_len = int(train_weight * len(dataset))
+    test_len = int(test_weight * len(dataset))
+    val_len = len(dataset) - train_len - test_len
+
+
+    train_batches = math.ceil(train_len / batch_size)
+    test_batches = math.ceil(test_len / batch_size)
+    val_batches = math.ceil(val_len / batch_size)
+    # dataset = balance_dataset(dataset)
+
+    # print_dataset_info(dataset, labels, 'Full dataset')
     best_test_loss = float('inf')
     while True:
-        train_dataset, test_dataset, val_dataset = split_dataset(dataset)
-
-        # print_dataset_info(train_dataset, labels, 'Training set')
-        # print_dataset_info(val_dataset, labels, 'Validation set')
-        # print_dataset_info(test_dataset, labels, 'Test set')
 
         # Create mini-batches
-        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-        val_loader   = DataLoader(val_dataset, batch_size=64, shuffle=True)
-        test_loader  = DataLoader(test_dataset, batch_size=64, shuffle=True)
+        if dataset_type == 'memory':
+            train_dataset, test_dataset, val_dataset = torch.utils.data.random_split(dataset,(train_len, test_len, val_len))
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            test_loader  = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+            val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+        elif dataset_type == 'disk':
+            train_dataset, test_dataset, val_dataset = dataset.random_split(total_length=len(dataset), weights={"train": train_len, "test": test_len, "val": val_len}, seed=torch.initial_seed())
+            train_loader = DataLoader2(train_dataset, reading_service=MultiProcessingReadingService(num_workers=8))
+            test_loader = DataLoader2(test_dataset, reading_service=MultiProcessingReadingService(num_workers=8))
+            val_loader = DataLoader2(val_dataset, reading_service=MultiProcessingReadingService(num_workers=8))
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = GCN(dim_i=dataset[0].num_features, dim_h=32, dim_o=len(labels)).to(device)
-        model = train(model, train_loader, val_loader, epochs=100)
-        model = torch.jit.script(model)
+        model = GCN(dim_i=next(iter(dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
+        model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=1)
         # conf_matrix(model, test_loader, labels)
-        test_loss, test_acc = test(model, test_loader)
+        test_loss, test_acc = test(model, test_loader, test_batches)
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             print(f'Better model found. Saving...')
-            torch.jit.save(model, 'model.pt')
+            script_module = torch.jit.script(model)
+            script_module.save('model.pt')
         print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
 
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = torch.jit.load('model.pt').to(device)
-    dataset, labels = read_dataset('dataset1.pickle', 'labels1.pickle')
-    # dataset, labels = build_data()
-    dataset_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+
+    batch_size = 64
+
+    if representation == 'size_delay':
+        dataset = PacketSizeDelayDataset('packet_size_delay_data', size_delay_dataset_location)
+        dataset_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+    elif representation == 'packet_list':
+        dataset = PacketListDatapipe(packet_list_dataset_location, batch_size)
+        dataset_loader = DataLoader2(dataset, reading_service=MultiProcessingReadingService(num_workers=4))
+
+    labels = get_labels()
+
+    train_batches = math.ceil(len(dataset) / batch_size)
+
     conf_matrix(model, dataset_loader, labels)
-    test_loss, test_acc = test(model, dataset_loader)
+    test_loss, test_acc = test(model, dataset_loader, train_batches)
     print(f'Dataset Loss: {test_loss:.2f} | Dataset Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
-    # train_model()
-    load_model()
+    train_model()
+    # load_model()

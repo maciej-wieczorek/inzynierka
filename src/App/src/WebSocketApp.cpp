@@ -7,6 +7,19 @@
 uWS::SSLApp* g_app = nullptr;
 uWS::Loop* g_loop = nullptr;
 
+WebSocketApp::~WebSocketApp()
+{
+	if (g_loop && g_app)
+	{
+		g_loop->defer([]() { g_app->close(); });
+	}
+
+	if (m_thread.joinable())
+	{
+		m_thread.join();
+	}
+}
+
 void WebSocketApp::run()
 {
     struct PerSocketData

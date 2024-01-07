@@ -2,6 +2,7 @@
 
 #include "Connection.h"
 #include "WebSocketApp.h"
+#include "Dataset.h"
 
 #include <string>
 
@@ -18,4 +19,5 @@ private:
 	std::string m_path;
 	WebSocketApp m_webSocketApp{};
 	Classifier m_classifier;
+	std::unique_ptr<Dataset> m_dataset;
 };

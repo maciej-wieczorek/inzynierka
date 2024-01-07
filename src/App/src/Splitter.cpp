@@ -69,7 +69,7 @@ void Splitter::addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::
     auto it = m_connections.find(key.str());
     if (it == m_connections.end())
     {
-        Connection connection{clientIP, clientPort, serverIP, serverPort};
+        Connection connection{getCurrentDataSource(), clientIP, clientPort, serverIP, serverPort};
         connection.addPacket(std::forward<pcpp::Packet>(packet));
 
         m_connections.emplace(key.str(), std::move(connection));
@@ -86,5 +86,15 @@ void Splitter::addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::
 
         connection.addPacket(std::forward<pcpp::Packet>(packet));
     }
+}
+
+void Splitter::setCurrentDataSource(const char* dataSource)
+{
+    m_currentDataSource = dataSource;
+}
+
+const char* Splitter::getCurrentDataSource() const
+{
+    return m_currentDataSource.c_str();
 }
 

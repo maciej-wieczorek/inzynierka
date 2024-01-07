@@ -15,6 +15,7 @@ struct GraphTensorData
 class Graph
 {
 public:
+    virtual ~Graph() = default;
     virtual GraphTensorData getAsTensors() = 0;
 };
 
@@ -38,6 +39,7 @@ public:
 class PacketListGraph : public Graph
 {
 public:
-    std::vector<const char*> nodes;
+    std::vector<std::unique_ptr<char[]>> nodes;
+    std::vector<size_t> sizes;
     virtual GraphTensorData getAsTensors() override;
 };

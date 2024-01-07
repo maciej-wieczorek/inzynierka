@@ -8,6 +8,7 @@
 class Grouper
 {
 public:	
+	virtual ~Grouper() = default;
     virtual std::unique_ptr<Graph> group(const ConnectionContent& connection) = 0;
 	virtual bool canGroup(const ConnectionContent& connection) = 0;
 	virtual bool shouldGroup(const ConnectionContent& connection) = 0;
@@ -19,6 +20,7 @@ public:
 class SizeDelayGrouper : public Grouper
 {
 public:
+	virtual ~SizeDelayGrouper() = default;
     virtual std::unique_ptr<Graph> group(const ConnectionContent& connection) override;
 	virtual bool canGroup(const ConnectionContent& connection) override;
 	virtual bool shouldGroup(const ConnectionContent& connection) override;
@@ -48,7 +50,13 @@ private:
 
 class PacketListGrouper : public Grouper
 {
+public:
+	virtual ~PacketListGrouper() = default;
+    virtual std::unique_ptr<Graph> group(const ConnectionContent& connection) override;
+	virtual bool canGroup(const ConnectionContent& connection) override;
+	virtual bool shouldGroup(const ConnectionContent& connection) override;
 
+    static constexpr size_t sizeConnection = 10;
 };
 
 Grouper& getGrouper();
