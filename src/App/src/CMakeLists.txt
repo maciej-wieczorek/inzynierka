@@ -15,6 +15,7 @@ target_link_libraries("${PROJECT_NAME}" PUBLIC "${TORCH_LIBRARIES}")
 target_link_libraries("${PROJECT_NAME}" PUBLIC PcapPlusPlus::Pcap++)
 
 if (MSVC)
+  add_definitions(/MP)
   file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
   add_custom_command(TARGET ${PROJECT_NAME}
                      POST_BUILD

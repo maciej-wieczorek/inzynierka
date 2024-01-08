@@ -115,14 +115,14 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
     best_val_loss = float('inf')
     best_model_state = None
 
-    for epoch in range(epochs+1):
+    for epoch in range(epochs):
         model.train()
         total_loss = 0
         acc = 0
 
         # Train on batches
         with tqdm(train_loader, desc=f'Epoch {epoch + 1}/{epochs}', unit='batch', total=train_num_batches) as t:
-            for data in t:
+            for data in train_loader:
                 data = data.to(device, non_blocking=True)
                 optimizer.zero_grad()
                 out = model(data.x, data.edge_index, data.batch)
@@ -135,7 +135,7 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
                 t.set_postfix(loss=total_loss.item() * (train_num_batches / (t.n+1)), acc=acc * (train_num_batches / (t.n+1)))
                 t.update()
 
-        val_loss, val_acc = test(model, val_loader, val_num_batches)
+        val_loss, val_acc = test(model, val_loader, val_num_batches, validation=True)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stop_counter = 0
@@ -154,15 +154,20 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
     return model
 
 @torch.no_grad()
-def test(model, loader, num_batches):
+def test(model, loader, num_batches, validation=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
     loss = 0
     acc = 0
 
-    with tqdm(loader, desc=f'Test', unit='batch', total=num_batches) as t:
-        for data in t:
+    if validation:
+        tqdm_desc = 'Validation'
+    else:
+        tqdm_desc = 'Test'
+
+    with tqdm(loader, desc=tqdm_desc, unit='batch', total=num_batches) as t:
+        for data in loader:
             data = data.to(device)
             out = model(data.x, data.edge_index, data.batch)
             loss += criterion(out, data.y) / num_batches
@@ -197,8 +202,8 @@ def accuracy(pred_y, y):
 
 packet_list_dataset_location = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\packet_list_dataset'
 size_delay_dataset_location = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\size_delay_dataset'
-dataset_location = packet_list_dataset_location
-dataset_type = 'disk'
+dataset_location = size_delay_dataset_location
+dataset_type = 'memory'
 
 def train_model():
     batch_size = 64
@@ -236,13 +241,14 @@ def train_model():
             val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
         elif dataset_type == 'disk':
             train_dataset, test_dataset, val_dataset = dataset.random_split(total_length=len(dataset), weights={"train": train_len, "test": test_len, "val": val_len}, seed=torch.initial_seed())
-            train_loader = DataLoader2(train_dataset, reading_service=MultiProcessingReadingService(num_workers=8))
-            test_loader = DataLoader2(test_dataset, reading_service=MultiProcessingReadingService(num_workers=8))
-            val_loader = DataLoader2(val_dataset, reading_service=MultiProcessingReadingService(num_workers=8))
+            rs = MultiProcessingReadingService(num_workers=0)
+            train_loader = DataLoader2(train_dataset, reading_service=rs)
+            test_loader = DataLoader2(test_dataset, reading_service=rs)
+            val_loader = DataLoader2(val_dataset, reading_service=rs)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = GCN(dim_i=next(iter(dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
-        model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=1)
+        model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=20)
         # conf_matrix(model, test_loader, labels)
         test_loss, test_acc = test(model, test_loader, test_batches)
         if test_loss < best_test_loss:
