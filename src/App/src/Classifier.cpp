@@ -28,7 +28,14 @@ void Classifier::load(std::string modelPath)
 std::vector<float> Classifier::classify(const GraphTensorData& graph)
 {
 	std::vector<torch::jit::IValue> inputs;
-	inputs.push_back(graph.x.to(torch::kFloat32) / 255.f);
+	if (graph.x.dtype() == torch::kInt8)
+	{
+		inputs.push_back(graph.x.to(torch::kFloat32) / 255.f);
+	}
+	else
+	{
+		inputs.push_back(graph.x);
+	}
 	inputs.push_back(graph.edge_index);
 	auto shape = graph.x.sizes();
 	inputs.push_back(torch::full({ shape[0] }, 0, torch::kInt64));

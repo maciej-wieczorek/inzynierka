@@ -1,9 +1,11 @@
 import torch
 from torch_geometric.data import Data, InMemoryDataset
-from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader
+from torch_geometric.data.batch import Batch
+from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader, InBatchShuffler
 import os
 import shutil
 import io
+import random
 
 def get_labels():
     return ["web", "video-stream", "file-transfer", "chat", "voip", "remote-desktop", "ssh", "other"]
@@ -38,6 +40,8 @@ class PacketsDataset(InMemoryDataset):
             
             i = 0
             while i < len(tensors):
+                if tensors[i].dtype ==  torch.int8:
+                    tensors[i] = tensors[i].float() / 255
                 data_list.append(Data(
                     x=tensors[i],
                     edge_index=tensors[i+1],
@@ -53,6 +57,9 @@ class PacketsDataset(InMemoryDataset):
 
         self.save(data_list, self.processed_paths[0])
 
+def graph_batch(batch):
+    random.shuffle(batch)
+    return Batch.from_data_list(batch)
 
 def data_filter(file_name):
     return file_name.endswith('.pt')
@@ -64,8 +71,10 @@ def get_data_list(elem):
     data_list = []
     i = 0
     while i < len(tensors):
+        if tensors[i].dtype ==  torch.int8:
+            tensors[i] = tensors[i].float() / 255
         data_list.append(Data(
-            x=tensors[i].float() / 255,
+            x=tensors[i],
             edge_index=tensors[i+1],
             y=tensors[i+2],
         ))
@@ -75,13 +84,14 @@ def get_data_list(elem):
 
 def PacketsDatapipe(root, batch_size):
     dp = FileLister(root=root).filter(data_filter)
+    dp = dp.shuffle(buffer_size=len(os.listdir(root)))
     dp = FileOpener(dp, mode='rb')
     dp = StreamReader(dp)
-    dp = dp.map(get_data_list).unbatch()
-    dp = dp.shuffle()
-    dp = dp.batch_graphs(batch_size=batch_size)
-    # dp = dp.in_batch_shuffle()
-    # dp = dp.in_memory_cache()
+    dp = dp.flatmap(get_data_list)
+    dp = dp.shuffle(buffer_size=50000)
+    # dp = dp.sharding_filter()
+    dp = dp.batch(batch_size=batch_size, drop_last=True)
+    dp = dp.map(Batch.from_data_list)
 
     dp = dp.set_length(sum(map(lambda x : int(x.split('-')[1].split('_')[0]), list(filter(data_filter, os.listdir(root))))))
 

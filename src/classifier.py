@@ -179,21 +179,24 @@ def test(model, loader, num_batches, validation=False):
     return loss, acc
 
 @torch.no_grad()
-def conf_matrix(model, loader, labels):
+def conf_matrix(model, loader, num_batches, labels):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.eval()
 
     model_pred = []
     correct_pred = []
 
-    for data in loader:
-        data = data.to(device)
-        out = model(data.x, data.edge_index, data.batch)
-    
-        model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
-        correct_pred.extend(list(data.y.cpu().numpy()))
+    with tqdm(loader, desc="Confusion matrix", unit='batch', total=num_batches) as t:
+        for data in loader:
+            data = data.to(device)
+            out = model(data.x, data.edge_index, data.batch)
+        
+            model_pred.extend(list(out.argmax(dim=1).cpu().numpy()))
+            correct_pred.extend(list(data.y.cpu().numpy()))
 
-    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred, display_labels=[labels[x] for x in sorted(list(set(model_pred)))])
+            t.update()
+
+    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred, display_labels=[labels[x] for x in sorted(list(set(correct_pred)))])
     plt.show()
 
 def accuracy(pred_y, y):
@@ -202,8 +205,8 @@ def accuracy(pred_y, y):
 
 packet_list_dataset_location = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\packet_list_dataset'
 size_delay_dataset_location = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\size_delay_dataset'
-dataset_location = size_delay_dataset_location
-dataset_type = 'memory'
+dataset_location = packet_list_dataset_location
+dataset_type = 'disk'
 
 def train_model():
     batch_size = 64
@@ -233,7 +236,7 @@ def train_model():
     best_test_loss = float('inf')
     while True:
 
-        # Create mini-batches
+        # Create loaders
         if dataset_type == 'memory':
             train_dataset, test_dataset, val_dataset = torch.utils.data.random_split(dataset,(train_len, test_len, val_len))
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -241,6 +244,9 @@ def train_model():
             val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
         elif dataset_type == 'disk':
             train_dataset, test_dataset, val_dataset = dataset.random_split(total_length=len(dataset), weights={"train": train_len, "test": test_len, "val": val_len}, seed=torch.initial_seed())
+            train_dataset.header(train_len)
+            test_dataset.header(test_len)
+            val_dataset.header(val_len)
             rs = MultiProcessingReadingService(num_workers=0)
             train_loader = DataLoader2(train_dataset, reading_service=rs)
             test_loader = DataLoader2(test_dataset, reading_service=rs)
@@ -260,25 +266,26 @@ def train_model():
 
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = torch.jit.load('model.pt').to(device)
+    model = torch.jit.load('packet_list_model.pt').to(device)
 
     batch_size = 64
 
-    if representation == 'size_delay':
-        dataset = PacketSizeDelayDataset('packet_size_delay_data', size_delay_dataset_location)
-        dataset_loader = DataLoader(dataset, batch_size=64, shuffle=True)
-    elif representation == 'packet_list':
-        dataset = PacketListDatapipe(packet_list_dataset_location, batch_size)
-        dataset_loader = DataLoader2(dataset, reading_service=MultiProcessingReadingService(num_workers=4))
+    if dataset_type == 'memory':
+        dataset = PacketsDataset('packet_size_delay_data', dataset_location)
+        dataset_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    elif dataset_type == 'disk':
+        dataset = PacketsDatapipe(dataset_location, batch_size)
+        rs = MultiProcessingReadingService(num_workers=0)
+        dataset_loader = DataLoader2(dataset, reading_service=rs)
 
     labels = get_labels()
 
     train_batches = math.ceil(len(dataset) / batch_size)
 
-    conf_matrix(model, dataset_loader, labels)
+    conf_matrix(model, dataset_loader, train_batches, labels)
     test_loss, test_acc = test(model, dataset_loader, train_batches)
     print(f'Dataset Loss: {test_loss:.2f} | Dataset Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
-    train_model()
-    # load_model()
+    # train_model()
+    load_model()

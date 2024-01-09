@@ -65,6 +65,8 @@ void App::processConnection(const Connection& connection)
         std::stringstream ss;
 		ss << connection.m_clientIP << ':' << connection.m_clientPort << '-' << connection.m_serverIP << ':' << connection.m_serverPort;
         ss << " [";
+		ss.precision(2);
+		ss << std::fixed;
         for (const auto& elem : output)
         {
             ss << " " << elem;
