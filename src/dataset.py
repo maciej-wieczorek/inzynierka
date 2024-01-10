@@ -1,7 +1,7 @@
 import torch
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.data.batch import Batch
-from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader, InBatchShuffler, IterableWrapper
+from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader, InBatchShuffler, IterableWrapper, Cycler, Zipper
 import os
 import shutil
 import io
@@ -99,10 +99,10 @@ def PacketsDatapipeOld(root, batch_size):
     return dp
 
 def get_offsets(path):
-    return np.fromfile(os.path.join(path, 'offsets.bin'), dtype=np.uint64)
+    return np.fromfile(path, dtype=np.uint64)
 
 def offset_to_graph(offset):
-    data_file = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\packet_list_dataset\data.bin'
+    data_file, offset = offset
     with open(data_file, mode='rb') as file:
         file.seek(int(offset))
         data_info = np.fromfile(file, dtype=np.int64, count=4)
@@ -124,12 +124,14 @@ def offset_to_graph(offset):
         )
 
 def PacketsDatapipe(root, batch_size):
-    offsets = get_offsets(root)
+    offsets = get_offsets(os.path.join(root, 'offsets.bin'))
     num_graphs = len(offsets)
+    dp_file_name = Cycler(IterableWrapper([os.path.join(root, 'data.bin')]))
+    dp_offsets = IterableWrapper(offsets)
 
-    dp = IterableWrapper(offsets)
-    dp = dp.shuffle(buffer_size=num_graphs)
+    dp = dp_offsets.shuffle(buffer_size=num_graphs)
     dp = dp.sharding_filter()
+    dp = Zipper(dp_file_name, dp_offsets)
     dp = dp.map(offset_to_graph)
     dp = dp.batch(batch_size=batch_size, drop_last=True)
     dp = dp.map(Batch.from_data_list)
