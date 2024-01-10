@@ -17,6 +17,7 @@ public:
 	~Dataset();
 	void open(std::string path);
 	void add(const GraphTensorData& graph, const ConnectionInfo& connectionInfo);
+	void add2(const GraphTensorData& graph, const ConnectionInfo& connectionInfo);
 	void save();
 	void saveTensors(const std::vector<at::Tensor>& tensors, const std::string& filePath);
 	void awaitSavedTensors();
@@ -29,4 +30,7 @@ private:
 	std::vector<std::future<void>> m_saveFutures;
 	size_t m_numGraphsToSave{};
 	size_t m_dataToSaveBytes{};
+
+	std::ofstream m_offsets;
+	std::ofstream m_data;
 };

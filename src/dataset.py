@@ -1,11 +1,12 @@
 import torch
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.data.batch import Batch
-from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader, InBatchShuffler
+from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader, InBatchShuffler, IterableWrapper
 import os
 import shutil
 import io
 import random
+import numpy as np
 
 def get_labels():
     return ["web", "video-stream", "file-transfer", "chat", "voip", "remote-desktop", "ssh", "other"]
@@ -82,7 +83,7 @@ def get_data_list(elem):
 
     return data_list
 
-def PacketsDatapipe(root, batch_size):
+def PacketsDatapipeOld(root, batch_size):
     dp = FileLister(root=root).filter(data_filter)
     dp = dp.shuffle(buffer_size=len(os.listdir(root)))
     dp = FileOpener(dp, mode='rb')
@@ -94,5 +95,45 @@ def PacketsDatapipe(root, batch_size):
     dp = dp.map(Batch.from_data_list)
 
     dp = dp.set_length(sum(map(lambda x : int(x.split('-')[1].split('_')[0]), list(filter(data_filter, os.listdir(root))))))
+
+    return dp
+
+def get_offsets(path):
+    return np.fromfile(os.path.join(path, 'offsets.bin'), dtype=np.uint64)
+
+def offset_to_graph(offset):
+    data_file = r'C:\Users\macie\Desktop\studia\inz\inzynierka\src\App\src\build_release\packet_list_dataset\data.bin'
+    with open(data_file, mode='rb') as file:
+        file.seek(int(offset))
+        data_info = np.fromfile(file, dtype=np.int64, count=4)
+        x_shape_n, x_shape_m, x_data_type, edge_index_size = data_info
+
+        if x_data_type == 0:
+            x = torch.from_numpy(np.fromfile(file, dtype=np.float32, count=x_shape_n * x_shape_m).reshape(x_shape_n, x_shape_m))
+        else:
+            x = torch.from_numpy(np.fromfile(file, dtype=np.int8, count=x_shape_n * x_shape_m).reshape(x_shape_n, x_shape_m)).float() / 255
+
+        edge_index = torch.from_numpy(np.fromfile(file, dtype=np.int64, count=edge_index_size).reshape(2, edge_index_size // 2))
+
+        y = torch.from_numpy(np.fromfile(file, dtype=np.int64, count=1))
+
+        return Data(
+            x=x,
+            edge_index=edge_index,
+            y=y
+        )
+
+def PacketsDatapipe(root, batch_size):
+    offsets = get_offsets(root)
+    num_graphs = len(offsets)
+
+    dp = IterableWrapper(offsets)
+    dp = dp.shuffle(buffer_size=num_graphs)
+    dp = dp.sharding_filter()
+    dp = dp.map(offset_to_graph)
+    dp = dp.batch(batch_size=batch_size, drop_last=True)
+    dp = dp.map(Batch.from_data_list)
+
+    dp = dp.set_length(num_graphs)
 
     return dp

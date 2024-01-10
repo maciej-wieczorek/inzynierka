@@ -247,7 +247,7 @@ def train_model():
             train_dataset.header(train_len)
             test_dataset.header(test_len)
             val_dataset.header(val_len)
-            rs = MultiProcessingReadingService(num_workers=0)
+            rs = MultiProcessingReadingService(num_workers=2)
             train_loader = DataLoader2(train_dataset, reading_service=rs)
             test_loader = DataLoader2(test_dataset, reading_service=rs)
             val_loader = DataLoader2(val_dataset, reading_service=rs)
@@ -266,7 +266,7 @@ def train_model():
 
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = torch.jit.load('packet_list_model.pt').to(device)
+    model = torch.jit.load('size_delay_model.pt').to(device)
 
     batch_size = 64
 
@@ -287,5 +287,5 @@ def load_model():
     print(f'Dataset Loss: {test_loss:.2f} | Dataset Acc: {test_acc*100:.2f}%')
 
 if __name__ == '__main__':
-    # train_model()
-    load_model()
+    train_model()
+    # load_model()
