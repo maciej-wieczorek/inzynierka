@@ -142,8 +142,8 @@ int SizeDelayGrouper::getGroupIndex(unsigned int size)
 
 Grouper& getGrouper()
 {
-    //static SizeDelayGrouper grouper;
-    static PacketListGrouper grouper;
+    static SizeDelayGrouper grouper;
+    //static PacketListGrouper grouper;
     return grouper;
 }
 

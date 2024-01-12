@@ -80,8 +80,6 @@ size_t getTensorByteSize(const at::Tensor& tensor)
 
 Dataset::~Dataset()
 {
-	save();
-	awaitSavedTensors();
 }
 
 void Dataset::open(std::string path)
@@ -90,116 +88,62 @@ void Dataset::open(std::string path)
 
 	bool dirExists = std::filesystem::exists(m_dir) && std::filesystem::is_directory(m_dir);
 
-	if (dirExists)
-	{
-		m_saveCount = findMaxNumberInFilenames(m_dir) + 1;
-	}
-	else
+	if (!dirExists)
 	{
 		std::filesystem::create_directory(m_dir);
 	}
 
-	std::filesystem::path csvFilePath = m_dir / "graphs.csv";
-	m_indexFile.open(csvFilePath, std::ios::app);
 
-	m_data.open(m_dir / "data.bin", std::ios::binary);
-	m_offsets.open(m_dir / "offsets.bin", std::ios::binary);
-
-	if (std::filesystem::file_size(csvFilePath) == 0)
+	m_data.open(m_dir / "data.bin", std::ios::binary | std::ios::app);
+	m_offsets.open(m_dir / "offsets.bin", std::ios::binary | std::ios::app);
+	if (std::filesystem::is_regular_file(m_dir / "data.bin"))
 	{
-		// print header
-		m_indexFile << "Client IP," << "Client port," << "Server IP," << "Server port,"
-			<< "Datasource," << "Count Packets," << "Total Size Packets,"
-			<< "First Timestamp," << "Last Timestamp," << "Label," << "Label Name\n";
+		m_currentOffset = std::filesystem::file_size(m_dir / "data.bin");
+	}
+	else
+	{
+		m_currentOffset = 0;
 	}
 }
 
 void Dataset::add(const GraphTensorData& graph, const ConnectionInfo& connectionInfo)
 {
-	int64_t label = extractLabel(connectionInfo.dataSource);
-	m_indexFile << connectionInfo << ',' << label << ',' << getLabelName(label) << '\n';
-	m_dataToSave.emplace_back(graph.x);
-	m_dataToSave.emplace_back(graph.edge_index);
-	m_dataToSave.emplace_back(torch::tensor(label));
-
-	m_dataToSaveBytes += getTensorByteSize(graph.x);
-	m_dataToSaveBytes += getTensorByteSize(graph.edge_index);
-	m_dataToSaveBytes += getTensorByteSize(m_dataToSave[m_dataToSave.size() - 1]);
-
-	++m_numGraphsToSave;
-
-	if (m_dataToSaveBytes >= 10000000)
+	if (m_saveFuture.valid())
 	{
-		save();
+		m_saveFuture.get();
 	}
-}
 
-void Dataset::add2(const GraphTensorData& graph, const ConnectionInfo& connectionInfo)
-{
-	static size_t currentOffset = 0;
-	int64_t label = extractLabel(connectionInfo.dataSource);
-
-	m_offsets.write(reinterpret_cast<const char*>(&currentOffset), sizeof(currentOffset));
-	
-	auto x_data = graph.x.data_ptr();
-	auto edge_index_data = graph.edge_index.data_ptr();
-
-	size_t x_data_size = getTensorByteSize(graph.x);
-	auto x_shape = graph.x.sizes();
-	size_t edge_index_data_size = getTensorByteSize(graph.edge_index);
-
-	int64_t x_data_shape_n = x_shape[0];
-	int64_t x_data_shape_m = x_shape[1];
-	int64_t x_data_type = graph.x.dtype() == torch::kFloat32 ? 0 : 1;
-	int64_t edge_index_size = graph.edge_index.numel();
-
-	// write data info
-	m_data.write(reinterpret_cast<const char*>(&x_data_shape_n), sizeof(x_data_shape_n));
-	m_data.write(reinterpret_cast<const char*>(&x_data_shape_m), sizeof(x_data_shape_m));
-	m_data.write(reinterpret_cast<const char*>(&x_data_type), sizeof(x_data_type));
-	m_data.write(reinterpret_cast<const char*>(&edge_index_size), sizeof(edge_index_size));
-
-	// write data
-	m_data.write(reinterpret_cast<const char*>(x_data), x_data_size);
-	m_data.write(reinterpret_cast<const char*>(edge_index_data), edge_index_data_size);
-	m_data.write(reinterpret_cast<const char*>(&label), sizeof(label));
-
-	currentOffset += 4 * sizeof(int64_t) + x_data_size + edge_index_data_size + sizeof(label);
-}
-
-void Dataset::save()
-{
-	std::stringstream fileName;
-	fileName << "graphs-" << m_numGraphsToSave << '_' << m_saveCount << ".pt";
-	std::string filePath = (m_dir / fileName.str()).string();
-	saveTensors(m_dataToSave, filePath);
-	m_dataToSave.clear();
-	m_numGraphsToSave = 0;
-	m_dataToSaveBytes = 0;
-	++m_saveCount;
-}
-
-void Dataset::saveTensors(const std::vector<at::Tensor>& tensors, const std::string& filePath)
-{
-	std::future<void> future = std::async(std::launch::async, [tensors, filePath]()
+	m_saveFuture = std::async(std::launch::async, [graph, connectionInfo, this]()
 	{
-		torch::save(tensors, filePath);
+		int64_t label = extractLabel(connectionInfo.dataSource);
+
+		m_offsets.write(reinterpret_cast<const char*>(&m_currentOffset), sizeof(m_currentOffset));
+		m_offsets.write(reinterpret_cast<const char*>(&label), sizeof(label));
+
+		auto x_data = graph.x.data_ptr();
+		auto edge_index_data = graph.edge_index.data_ptr();
+
+		size_t x_data_size = getTensorByteSize(graph.x);
+		auto x_shape = graph.x.sizes();
+		size_t edge_index_data_size = getTensorByteSize(graph.edge_index);
+
+		int64_t x_data_shape_n = x_shape[0];
+		int64_t x_data_shape_m = x_shape[1];
+		int64_t x_data_type = graph.x.dtype() == torch::kFloat32 ? 0 : 1;
+		int64_t edge_index_size = graph.edge_index.numel();
+
+		// write data info
+		m_data.write(reinterpret_cast<const char*>(&x_data_shape_n), sizeof(x_data_shape_n));
+		m_data.write(reinterpret_cast<const char*>(&x_data_shape_m), sizeof(x_data_shape_m));
+		m_data.write(reinterpret_cast<const char*>(&x_data_type), sizeof(x_data_type));
+		m_data.write(reinterpret_cast<const char*>(&edge_index_size), sizeof(edge_index_size));
+
+		// write data
+		m_data.write(reinterpret_cast<const char*>(x_data), x_data_size);
+		m_data.write(reinterpret_cast<const char*>(edge_index_data), edge_index_data_size);
+		m_data.write(reinterpret_cast<const char*>(&label), sizeof(label));
+
+		m_currentOffset += 4 * sizeof(int64_t) + x_data_size + edge_index_data_size + sizeof(label);
 	});
-	m_saveFutures.push_back(std::move(future));
-
-	if (m_saveFutures.size() >= std::thread::hardware_concurrency())
-	{
-		awaitSavedTensors();
-	}
-}
-
-void Dataset::awaitSavedTensors()
-{
-	for (size_t i = 0; i < m_saveFutures.size(); ++i)
-	{
-		m_saveFutures[i].get();
-	}
-
-	m_saveFutures.clear();
 }
 

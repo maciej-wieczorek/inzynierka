@@ -77,6 +77,6 @@ void App::processConnection(const Connection& connection)
     }
 	else if (m_action == "dataset")
 	{
-		m_dataset->add2(graph, connectionInfo);
+		m_dataset->add(graph, connectionInfo);
 	}
 }
