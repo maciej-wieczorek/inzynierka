@@ -59,5 +59,5 @@ public:
     static constexpr size_t sizeConnection = 10;
 };
 
-Grouper& getGrouper();
+Grouper& getGrouper(std::string graphType = "");
 

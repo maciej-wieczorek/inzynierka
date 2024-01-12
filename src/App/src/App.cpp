@@ -14,7 +14,7 @@ void App::run()
     if (m_action == "predict")
     {
         m_webSocketApp.run();
-        m_classifier.load(m_path == "" ? "model.pt" : m_path);
+        m_classifier.load(m_path);
     }
 	else if (m_action == "dataset")
 	{

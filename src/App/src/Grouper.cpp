@@ -140,11 +140,20 @@ int SizeDelayGrouper::getGroupIndex(unsigned int size)
     throw std::exception{};
 }
 
-Grouper& getGrouper()
+Grouper& getGrouper(std::string graphType)
 {
-    static SizeDelayGrouper grouper;
-    //static PacketListGrouper grouper;
-    return grouper;
+    static std::unique_ptr<Grouper> grouper = nullptr;
+
+    if (graphType == "packet_list")
+    {
+        grouper = std::make_unique<PacketListGrouper>();
+    }
+    else if (graphType == "size_delay")
+    {
+        grouper = std::make_unique<SizeDelayGrouper>();
+    }
+
+    return *grouper;
 }
 
 std::unique_ptr<Graph> PacketListGrouper::group(const ConnectionContent& connection)

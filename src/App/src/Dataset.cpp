@@ -84,7 +84,7 @@ Dataset::~Dataset()
 
 void Dataset::open(std::string path)
 {
-	m_dir = path == "" ? "dataset" : path;
+	m_dir = path;
 
 	bool dirExists = std::filesystem::exists(m_dir) && std::filesystem::is_directory(m_dir);
 
