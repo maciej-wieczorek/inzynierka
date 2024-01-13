@@ -8,12 +8,16 @@ from torch_geometric.loader import DataLoader
 from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
 from tqdm import tqdm
 import math
+import os
+import time
 
-from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from copy import deepcopy
 import matplotlib.pyplot as plt
 
 from dataset import PacketsDatapipe, get_labels
+
+ARTIFACTS_DIR = os.path.join('artifacts', f'training-{time.time()}')
 
 # Define our GCN class as a pytorch Module
 class GCN2(torch.nn.Module):
@@ -105,7 +109,7 @@ class GCN(torch.nn.Module):
         
         return F.softmax(h, dim=1)
 
-def train(model, train_loader, train_num_batches, val_loader, val_num_batches, epochs=100, patience=10):
+def train(model, train_loader, train_num_batches, val_loader, val_num_batches, epochs=30, patience=5, learning_curve=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -113,6 +117,11 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
     early_stop_counter = 0
     best_val_loss = float('inf')
     best_model_state = None
+
+    lc_file = None
+    if learning_curve:
+        lc_file = open(os.path.join(ARTIFACTS_DIR, 'learning-curve.csv'), mode='wt')
+        lc_file.write('epoch, train_loss, train_acc, val_loss, val_acc\n')
 
     for epoch in range(epochs):
         model.train()
@@ -134,7 +143,12 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
                 t.set_postfix(loss=total_loss.item() * (train_num_batches / (t.n+1)), acc=acc * (train_num_batches / (t.n+1)))
                 t.update()
 
-        val_loss, val_acc = test(model, val_loader, val_num_batches, validation=True)
+        val_loss, val_acc = test(model, val_loader, val_num_batches, desc='Validation')
+
+        if learning_curve:
+            train_loss, train_acc = test(model, train_loader, train_num_batches, 'Train')
+            lc_file.write(f'{epoch}, {train_loss:.3f}, {train_acc:.3f}, {val_loss:.3f}, {val_acc:.3f}\n')
+
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stop_counter = 0
@@ -145,25 +159,23 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
         if early_stop_counter >= patience:
             print(f"Early stopping at epoch {epoch} with validation loss: {best_val_loss}")
             break
+
+    if lc_file is not None:
+        lc_file.close()
             
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
     return model
 
 @torch.no_grad()
-def test(model, loader, num_batches, validation=False):
+def test(model, loader, num_batches, desc='Test'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
     loss = 0
     acc = 0
 
-    if validation:
-        tqdm_desc = 'Validation'
-    else:
-        tqdm_desc = 'Test'
-
-    with tqdm(loader, desc=tqdm_desc, unit='batch', total=num_batches) as t:
+    with tqdm(loader, desc=desc, unit='batch', total=num_batches) as t:
         for data in loader:
             data = data.to(device)
             out = model(data.x, data.edge_index, data.batch)
@@ -193,8 +205,16 @@ def conf_matrix(model, loader, num_batches, labels):
 
             t.update()
 
-    ConfusionMatrixDisplay.from_predictions(model_pred, correct_pred, display_labels=[labels[x] for x in sorted(list(set(correct_pred)))])
-    plt.show()
+    cm = confusion_matrix(model_pred, correct_pred)
+    cmp = ConfusionMatrixDisplay(cm, display_labels=[labels[x] for x in sorted(list(set(correct_pred)))])
+    fig, ax = plt.subplots(figsize=(12,10))
+    cmp.plot(ax=ax)
+    fig.savefig(os.path.join(ARTIFACTS_DIR, 'conf_matrix'))
+
+    num_rows, num_cols = cm.shape
+    rows, cols = np.indices((num_rows, num_cols))
+    cm_latex = np.column_stack((cols.flatten(), rows.flatten(), cm.flatten()))
+    np.savetxt(os.path.join(ARTIFACTS_DIR, 'conv_matrix_latex.txt'), cm_latex, fmt='%d', delimiter=' ', comments='')
 
 def accuracy(pred_y, y):
     """Calculate accuracy."""
@@ -205,7 +225,7 @@ size_delay_dataset_location = r'App\src\build_release\size_delay_dataset'
 dataset_in_memory_cache = False
 batch_size = 64
 balanced = True
-num_workers = 2
+num_workers = 0
 
 def train_model():
 
@@ -213,7 +233,7 @@ def train_model():
     test_weight = 0.2
     val_weight = 0.1
 
-    train_dataset, test_dataset, val_dataset = PacketsDatapipe(packet_list_dataset_location, batch_size=batch_size, \
+    train_dataset, test_dataset, val_dataset = PacketsDatapipe(size_delay_dataset_location, batch_size=batch_size, \
             weights=[train_weight, test_weight, val_weight], balanced=balanced, in_memory=dataset_in_memory_cache)
 
     labels = get_labels()
@@ -223,23 +243,25 @@ def train_model():
     val_batches = math.ceil(len(val_dataset) / batch_size)
 
     best_test_loss = float('inf')
-    while True:
-        rs = MultiProcessingReadingService(num_workers=num_workers)
-        train_loader = DataLoader2(train_dataset, reading_service=rs)
-        test_loader = DataLoader2(test_dataset, reading_service=rs)
-        val_loader = DataLoader2(val_dataset, reading_service=rs)
+    # while True:
+    rs = MultiProcessingReadingService(num_workers=num_workers)
+    train_loader = DataLoader2(train_dataset, reading_service=rs)
+    test_loader = DataLoader2(test_dataset, reading_service=rs)
+    val_loader = DataLoader2(val_dataset, reading_service=rs)
 
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = GCN(dim_i=next(iter(train_dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
-        model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=20)
-        # conf_matrix(model, test_loader, labels)
-        test_loss, test_acc = test(model, test_loader, test_batches)
-        print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
-        if test_loss < best_test_loss:
-            best_test_loss = test_loss
-            print(f'Better model found. Saving...')
-            script_module = torch.jit.script(model)
-            script_module.save('model.pt')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = GCN(dim_i=next(iter(train_dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
+
+    os.makedirs(ARTIFACTS_DIR)
+    model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=30, learning_curve=True)
+    conf_matrix(model, test_loader, test_batches, labels)
+    test_loss, test_acc = test(model, test_loader, test_batches)
+    print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
+    if test_loss < best_test_loss:
+        best_test_loss = test_loss
+        print(f'Better model found. Saving...')
+        script_module = torch.jit.script(model)
+        script_module.save(os.path.join(ARTIFACTS_DIR, 'model.pt'))
 
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
