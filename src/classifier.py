@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import Linear, Sequential, BatchNorm1d, ReLU, Dropout
 from torch_geometric.nn import GCNConv, GraphConv
-from torch_geometric.nn import global_mean_pool, global_add_pool, TopKPooling, global_max_pool as gmp, global_mean_pool as gap
+from torch_geometric.nn import global_mean_pool, global_add_pool, TopKPooling, global_max_pool as gmp, global_add_pool as gap
 from torch_geometric.loader import DataLoader
 from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
 from tqdm import tqdm
@@ -142,8 +142,6 @@ def train(model, train_loader, train_num_batches, val_loader, val_num_batches, e
         else:
             early_stop_counter += 1
 
-        # print(f'Epoch {epoch:>3} | Train Loss: {total_loss:.2f} | Train Acc: {acc*100:>5.2f}% | Val Loss: {val_loss:.2f} | Val Acc: {val_acc*100:.2f}%')
-
         if early_stop_counter >= patience:
             print(f"Early stopping at epoch {epoch} with validation loss: {best_val_loss}")
             break
@@ -211,41 +209,29 @@ num_workers = 2
 
 def train_model():
 
-    dataset = PacketsDatapipe(size_delay_dataset_location, batch_size=batch_size, balanced=balanced, in_memory=dataset_in_memory_cache)
-
-    labels = get_labels()
-
     train_weight = 0.7
     test_weight = 0.2
     val_weight = 0.1
 
-    train_len = int(train_weight * len(dataset))
-    test_len = int(test_weight * len(dataset))
-    val_len = len(dataset) - train_len - test_len
+    train_dataset, test_dataset, val_dataset = PacketsDatapipe(packet_list_dataset_location, batch_size=batch_size, \
+            weights=[train_weight, test_weight, val_weight], balanced=balanced, in_memory=dataset_in_memory_cache)
 
+    labels = get_labels()
 
-    train_batches = math.ceil(train_len / batch_size)
-    test_batches = math.ceil(test_len / batch_size)
-    val_batches = math.ceil(val_len / batch_size)
-    # dataset = balance_dataset(dataset)
+    train_batches = math.ceil(len(train_dataset) / batch_size)
+    test_batches = math.ceil(len(test_dataset) / batch_size)
+    val_batches = math.ceil(len(val_dataset) / batch_size)
 
-    # print_dataset_info(dataset, labels, 'Full dataset')
     best_test_loss = float('inf')
     while True:
-
-        # Create loaders
-        train_dataset, test_dataset, val_dataset = dataset.random_split(total_length=len(dataset), weights={"train": train_len, "test": test_len, "val": val_len}, seed=torch.initial_seed())
-        train_dataset.header(train_len)
-        test_dataset.header(test_len)
-        val_dataset.header(val_len)
         rs = MultiProcessingReadingService(num_workers=num_workers)
         train_loader = DataLoader2(train_dataset, reading_service=rs)
         test_loader = DataLoader2(test_dataset, reading_service=rs)
         val_loader = DataLoader2(val_dataset, reading_service=rs)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = GCN(dim_i=next(iter(dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
-        model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=2)
+        model = GCN(dim_i=next(iter(train_dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
+        model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=20)
         # conf_matrix(model, test_loader, labels)
         test_loss, test_acc = test(model, test_loader, test_batches)
         print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')

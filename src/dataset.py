@@ -1,10 +1,9 @@
 import torch
-from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import Data
 from torch_geometric.data.batch import Batch
-from torchdata.datapipes.iter import FileLister, FileOpener, StreamReader, InBatchShuffler, IterableWrapper, Cycler, Zipper, SampleMultiplexer, IterDataPipe, Shuffler
+from torchdata.datapipes.iter import IterableWrapper, Cycler, Zipper, IterDataPipe
 from torchdata.datapipes.utils import StreamWrapper
 import os
-import shutil
 import io
 import random
 import numpy as np
@@ -30,13 +29,6 @@ def filestream_to_graph(file):
         edge_index=edge_index,
         y=y
     )
-
-def graph_batch(batch):
-    random.shuffle(batch)
-    return Batch.from_data_list(batch)
-
-def data_filter(file_name):
-    return file_name.endswith('.pt')
 
 def get_data_list(elem):
     tensors_model = torch.jit.load(io.BytesIO(elem[1]))
@@ -77,7 +69,7 @@ class CustomShufflerIterDataPipe(IterDataPipe):
     def __len__(self):
         return len(self.source)
 
-def PacketsDatapipe(root, batch_size=64, balanced=False, max_num_graphs=None, in_memory=False):
+def PacketsDatapipe(root, batch_size=64, balanced=False, weights=[1.0], max_num_graphs=None, in_memory=False):
     index = get_offsets(os.path.join(root, 'offsets.bin'))
     offsets = index[:, 0]
 
@@ -86,7 +78,7 @@ def PacketsDatapipe(root, batch_size=64, balanced=False, max_num_graphs=None, in
         unique_labels, label_counts = np.unique(index[:, 1], return_counts=True)
 
         min_label = min(label_counts)
-        balanced_offsets = np.concatenate([np.random.choice(offsets[labels == label], min_label) for label in unique_labels])
+        balanced_offsets = np.concatenate([np.random.choice(offsets[labels == label], min_label, replace=False) for label in unique_labels])
         dp_input_offsets = balanced_offsets
         num_graphs = len(unique_labels) * min_label
     else:
@@ -95,23 +87,34 @@ def PacketsDatapipe(root, batch_size=64, balanced=False, max_num_graphs=None, in
 
     if max_num_graphs is not None:
         num_graphs = min(num_graphs, max_num_graphs)
+        dp_input_offsets = np.random.choice(dp_input_offsets, num_graphs)
 
     dp_file_name = Cycler(IterableWrapper([os.path.join(root, 'data.bin')]))
 
-    dp = CustomShufflerIterDataPipe(dp_input_offsets)
-    dp = dp.sharding_filter()
-    dp = Zipper(dp_file_name, dp)
-    dp = dp.map(offest_to_filestream)
-    dp = StreamWrapper(dp)
-    dp = dp.map(filestream_to_graph)
-    if batch_size > 1:
+    np.random.shuffle(dp_input_offsets)
+    indices = np.cumsum(weights)
+    indices /= indices[-1]
+    split_indices = (indices[:-1]* len(dp_input_offsets)).astype(int)
+
+    dp_inputs = np.split(dp_input_offsets, split_indices)
+    dps = []
+
+    for dp_input in dp_inputs:
+        dp = CustomShufflerIterDataPipe(dp_input)
+        dp = dp.sharding_filter()
+        dp = Zipper(dp_file_name, dp)
+        dp = dp.map(offest_to_filestream)
+        dp = StreamWrapper(dp)
+        dp = dp.map(filestream_to_graph)
         dp = dp.batch(batch_size=batch_size, drop_last=True)
         dp = dp.map(Batch.from_data_list)
 
-    dp = dp.header(num_graphs).set_length(num_graphs)
-    dp = dp.prefetch()
+        dp = dp.header(len(dp_input)).set_length(len(dp_input))
+        dp = dp.prefetch()
 
-    if in_memory:
-        dp = dp.in_memory_cache()
+        if in_memory:
+            dp = dp.in_memory_cache()
 
-    return dp
+        dps.append(dp)
+
+    return dps
