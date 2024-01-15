@@ -1,58 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GUI</title>
-</head>
-<body>
+    <style>
+      tr {
+        background-color: #eeeeee;
+      }
+      tr:nth-child(2n) {
+        background-color: #cccccc;
+      }
+      table {
+        background-color: #777777;
+      }
+      th {
+        background-color: #ccccff;
+      }
+
+      td,
+      th {
+        padding: 0em 0.2em;
+      }
+    </style>
+  </head>
+  <body>
     <h1>GUI</h1>
 
     <label for="serverInput">Server:</label>
-    <input type="text" id="serverInput" placeholder="ws://example.com/socket">
+    <input type="text" id="serverInput" placeholder="ws://example.com/socket" />
     <button onclick="startWebSocket()">Start</button>
 
     <div id="message-container"></div>
+    <div>
+      <table id="conn-table">
+        <tbody id="conn-list">
+          <tr>
+            <th rowspan="2">Connection</th>
+            <th colspan="8">Mean predictions</th>
+            <th rowspan="2">
+              Number<br />
+              of predictions
+            </th>
+          </tr>
+          <tr>
+            <th class="vertical">web</th>
+            <th class="vertical">video-stream</th>
+            <th class="vertical">file-transfer</th>
+            <th class="vertical">chat</th>
+            <th class="vertical">voip</th>
+            <th class="vertical">remote-desktop</th>
+            <th class="vertical">ssh</th>
+            <th class="vertical">other</th>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <script>
-        let socket;
-
-        function startWebSocket() {
-            const serverUrl = document.getElementById('serverInput').value;
-
-            if (!serverUrl) {
-                alert('Please enter a WebSocket server URL.');
-                return;
-            }
-
-            // Close the existing WebSocket connection if any
-            if (socket) {
-                socket.close();
-            }
-
-            // Create a new WebSocket connection
-            socket = new WebSocket(serverUrl);
-
-            // DOM element to display messages
-            const messageContainer = document.getElementById('message-container');
-            messageContainer.innerHTML = ''; // Clear previous messages when starting a new connection
-
-            socket.addEventListener('open', (event) => {
-                console.log('WebSocket connection opened:', event);
-            });
-
-            socket.addEventListener('message', (event) => {
-                messageContainer.innerText = `Received message: ${event.data}`; 
-            });
-
-            socket.addEventListener('close', (event) => {
-                console.log('WebSocket connection closed:', event);
-            });
-
-            socket.addEventListener('error', (event) => {
-                console.error('WebSocket error:', event);
-            });
+      function* generator() {
+        let num = 100
+        while (true) {
+          num++
+          yield 'data-' + num
         }
+      }
+
+      function sortTable() {
+        var table, rows, switching, i, x, y, shouldSwitch
+        table = document.getElementById('conn-table')
+        switching = true
+        while (switching) {
+          switching = false
+          rows = table.rows
+          for (i = 2; i < rows.length - 1; i++) {
+            shouldSwitch = false
+            x = rows[i].getElementsByTagName('TD')[9]
+            y = rows[i + 1].getElementsByTagName('TD')[9]
+            if (parseInt(x.innerHTML) < parseInt(y.innerHTML)) {
+              shouldSwitch = true
+              break
+            }
+          }
+          if (shouldSwitch) {
+            rows[i].parentNode.insertBefore(rows[i + 1], rows[i])
+            switching = true
+          }
+        }
+      }
+
+      const generate_dom_id = generator()
+      class Connection {
+        constructor(conn_name) {
+          this.pred_sums = Array(8).fill(0.0) // init accumulator fields
+          this.pred_count = 0
+          this.dom_id = generate_dom_id.next().value
+
+          this.dom_elem = document.createElement('tr')
+          this.dom_elem.id = this.dom_id // Table Row element
+          this.dom_name = document.createElement('td') // Column with name
+          this.dom_elem.appendChild(this.dom_name)
+          this.dom_name.innerText = conn_name // set name
+
+          this.dom_preds = Array(8) // Array of Columns with predictions
+          for (let i = 0; i < 8; i++) {
+            let elem = document.createElement('td')
+            this.dom_preds[i] = elem
+            this.dom_elem.appendChild(elem)
+          }
+
+          this.dom_pred_count = document.createElement('td')
+          this.dom_elem.appendChild(this.dom_pred_count)
+          document.getElementById('conn-list').appendChild(this.dom_elem)
+        }
+
+        update(data_string) {
+          this.pred_count += 1
+          let split_data = data_string.trim().split(' ')
+          for (let i = 0; i < 8; i++) {
+            console.log(split_data)
+            console.log(this.pred_sums[i])
+            this.pred_sums[i] += parseFloat(split_data[i])
+          }
+          this.update_dom();
+          sortTable();
+        }
+
+        update_dom() {
+          for (let i = 0; i < 8; i++) {
+            console.log(this.pred_sums[i] / this.pred_count)
+            this.dom_preds[i].innerText = (
+              this.pred_sums[i] / this.pred_count
+            ).toFixed(2)
+          }
+          this.dom_pred_count.innerText = this.pred_count
+        }
+      }
+
+      let socket
+      const dict = {}
+      let out = ''
+
+      function startWebSocket() {
+        const serverUrl = document.getElementById('serverInput').value
+
+        if (!serverUrl) {
+          alert('Please enter a WebSocket server URL.')
+          return
+        }
+
+        // Close the existing WebSocket connection if any
+        if (socket) {
+          socket.close()
+        }
+
+        // Create a new WebSocket connection
+        socket = new WebSocket(serverUrl)
+
+        // DOM element to display messages
+        const messageContainer = document.getElementById('message-container')
+        messageContainer.innerHTML = '' // Clear previous messages when starting a new connection
+        const conn_list = document.getElementById('conn-list')
+
+        socket.addEventListener('open', event => {
+          console.log('WebSocket connection opened:', event)
+        })
+
+        socket.addEventListener('message', event => {
+          messageContainer.innerText = `Received message: ${event.data}`
+          let data = event.data.split('[')
+          let key = data[0].trim()
+          let value = data[1].slice(0, -1)
+          console.log(key, value)
+          if (!dict[key]) {
+            dict[key] = new Connection(key)
+          }
+          dict[key].update(value)
+          // out = "<table>";
+          // for (klucz in dict){
+          //     out += "<tr><th>" + klucz + "</th>";
+          //     out += "<th>" + dict[klucz] + "</th>";
+          //     out += "</tr>";
+          // }
+          // out += "</table>";
+          // conn_list.innerHTML = out;
+        })
+
+        socket.addEventListener('close', event => {
+          console.log('WebSocket connection closed:', event)
+        })
+
+        socket.addEventListener('error', event => {
+          console.error('WebSocket error:', event)
+        })
+      }
     </script>
-</body>
+  </body>
 </html>
