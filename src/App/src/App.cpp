@@ -22,10 +22,10 @@ void App::run()
 		m_dataset->open(m_path);
 	}
 
-	auto splitter = std::make_unique<Splitter>(this);
 
 	if (std::filesystem::is_regular_file(m_source))
 	{
+		auto splitter = std::make_unique<Splitter>(this);
 		std::filesystem::path filePath{ m_source };
 		splitter->setCurrentDataSource(filePath.filename().string().c_str());
 		readCaptureFile(filePath.string().c_str(), splitter.get());
@@ -36,6 +36,7 @@ void App::run()
 		{
 			if (entry.is_regular_file())
 			{
+				auto splitter = std::make_unique<Splitter>(this);
 				splitter->setCurrentDataSource(entry.path().filename().string().c_str());
 				readCaptureFile(entry.path().string().c_str(), splitter.get());
 			}
@@ -43,6 +44,7 @@ void App::run()
 	}
 	else
 	{
+		auto splitter = std::make_unique<Splitter>(this);
 		splitter->setCurrentDataSource("live-capture");
 		liveCapture(m_source.c_str(), splitter.get());
 	}

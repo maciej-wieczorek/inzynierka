@@ -49,7 +49,7 @@ std::unique_ptr<Graph> SizeDelayGrouper::group(const ConnectionContent& connecti
 
 bool SizeDelayGrouper::canGroup(const ConnectionContent& connection)
 {
-    return connection.getCountPackets() >= minSizeConnection;
+    return connection.getCountPackets() >= minSizeConnection && connection.getTotalSizePackets() >= minTotalByteSizeConnection;
 }
 
 bool SizeDelayGrouper::shouldGroup(const ConnectionContent& connection)
@@ -162,10 +162,10 @@ std::unique_ptr<Graph> PacketListGrouper::group(const ConnectionContent& connect
 
     for (const auto& entry : connection.entries)
     {
-        graph->nodes.emplace_back(std::make_unique<char[]>(entry.size));
-        memcpy(graph->nodes[graph->nodes.size() - 1].get(), entry.rawPacketData.get(), entry.size);
+        graph->nodes.emplace_back(std::make_unique<uint8_t[]>(entry.size));
+        memcpy(graph->nodes[graph->nodes.size() - 1].get(), entry.rawPacketData.get(), entry.payloadSize);
 
-        graph->sizes.emplace_back(entry.size);
+        graph->sizes.emplace_back(entry.payloadSize);
     }
 
     return std::move(graph);
@@ -173,7 +173,15 @@ std::unique_ptr<Graph> PacketListGrouper::group(const ConnectionContent& connect
 
 bool PacketListGrouper::canGroup(const ConnectionContent& connection)
 {
-    return connection.getCountPackets() == sizeConnection;
+    size_t countNonZero = 0;
+    for (const auto& entry : connection.entries)
+    {
+        if (entry.payloadSize > 0)
+        {
+            ++countNonZero;
+        }
+    }
+    return countNonZero >= minSizeConnection && connection.getTotalSizePackets() >= minTotalByteSizeConnection;
 }
 
 bool PacketListGrouper::shouldGroup(const ConnectionContent& connection)

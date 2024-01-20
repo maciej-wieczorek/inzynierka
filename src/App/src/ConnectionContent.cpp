@@ -21,8 +21,8 @@ timespec ConnectionContent::getLastTimestamp() const
     return entries[entries.size() - 1].timestamp;
 }
 
-void ConnectionContent::addEntry(timespec ts, int s, std::unique_ptr<char[]>&& packetData)
+void ConnectionContent::addEntry(timespec ts, int s, int ps, std::unique_ptr<uint8_t[]>&& packetData)
 {
-    entries.emplace_back(ts, s, std::forward<std::unique_ptr<char[]>>(packetData));
+    entries.emplace_back(ts, s, ps, std::forward<std::unique_ptr<uint8_t[]>>(packetData));
     m_totalSizePackets += s;
 }

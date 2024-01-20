@@ -23,23 +23,23 @@ ARTIFACTS_DIR = os.path.join('artifacts', f'training-{time.time()}')
 class GCN2(torch.nn.Module):
     def __init__(self, dim_i, dim_o):
         super(GCN2, self).__init__()
-        self.conv1 = GraphConv(dim_i, 128)
+        self.conv1 = GraphConv(dim_i, 128).jittable()
         self.pool1 = TopKPooling(128, ratio=0.5)
         self.bn1 = BatchNorm1d(128)
         
-        self.conv2 = GraphConv(128, 128)
+        self.conv2 = GraphConv(128, 128).jittable()
         self.pool2 = TopKPooling(128, ratio=0.5)
         self.bn2 = BatchNorm1d(128)
         
-        self.conv3 = GraphConv(128, 128)
+        self.conv3 = GraphConv(128, 128).jittable()
         self.pool3 = TopKPooling(128, ratio=0.5)
         self.bn3 = BatchNorm1d(128)
         
-        self.conv4 = GraphConv(128, 128)
+        self.conv4 = GraphConv(128, 128).jittable()
         self.pool4 = TopKPooling(128, ratio=0.5)
         self.bn4 = BatchNorm1d(128)
         
-        self.conv5 = GraphConv(128, 128)
+        self.conv5 = GraphConv(128, 128).jittable()
         self.pool5 = TopKPooling(128, ratio=0.5)
         self.bn5 = BatchNorm1d(128)
         
@@ -79,13 +79,13 @@ class GCN2(torch.nn.Module):
         x = F.dropout(x, p=0.2, training=self.training)
         x = F.relu(self.lin2(x))
         x = F.dropout(x, p=0.5, training=self.training)
-        x = F.log_softmax(self.lin3(x), dim=-1)
+        x = F.softmax(self.lin3(x), dim=-1)
         
         return x
 
 class GCN(torch.nn.Module):
     """GCN"""
-    def __init__(self, dim_i, dim_h, dim_o):
+    def __init__(self, dim_i, dim_o, dim_h=32):
         super(GCN, self).__init__()
         self.conv1 = GCNConv(dim_i, dim_h).jittable()
         self.conv2 = GCNConv(dim_h, dim_h).jittable()
@@ -220,12 +220,12 @@ def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
-packet_list_dataset_location = r'App\src\build_release\packet_list_dataset'
-size_delay_dataset_location = r'App\src\build_release\size_delay_dataset'
+packet_list_dataset_location = r'App\src\build_release\VNAT\packet_list_dataset'
+size_delay_dataset_location = r'App\src\build_release\VNAT\size_delay_dataset'
 dataset_in_memory_cache = False
 batch_size = 64
 balanced = True
-num_workers = 0
+num_workers = 4
 
 def train_model():
 
@@ -250,10 +250,10 @@ def train_model():
     val_loader = DataLoader2(val_dataset, reading_service=rs)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = GCN(dim_i=next(iter(train_dataset)).num_features, dim_h=32, dim_o=len(labels)).to(device)
+    model = GCN(dim_i=next(iter(train_dataset)).num_features, dim_o=len(labels)).to(device)
 
     os.makedirs(ARTIFACTS_DIR)
-    model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=30, learning_curve=True)
+    model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=30, learning_curve=False)
     conf_matrix(model, test_loader, test_batches, labels)
     test_loss, test_acc = test(model, test_loader, test_batches)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')

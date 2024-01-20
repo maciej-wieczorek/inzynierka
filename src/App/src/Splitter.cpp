@@ -3,6 +3,7 @@
 #include "Utilities.h"
 
 #include <Packet.h>
+#include <EthLayer.h>
 #include <IPv4Layer.h>
 #include <TcpLayer.h>
 #include <UdpLayer.h>
@@ -28,25 +29,40 @@ void Splitter::consumePacket(pcpp::Packet&& packet)
     {
         uint16_t srcPort{ 0 }, dstPort{ 0 };
 
-        // extract ports
+        // extract ports and mask them
         if (packet.isPacketOfType(pcpp::TCP))
         {
             pcpp::TcpLayer* TcpLayer = packet.getLayerOfType<pcpp::TcpLayer>();
             srcPort = TcpLayer->getSrcPort();
             dstPort = TcpLayer->getDstPort();
+            TcpLayer->getTcpHeader()->portSrc = 0;
+            TcpLayer->getTcpHeader()->portDst = 0;
         }
         else if (packet.isPacketOfType(pcpp::UDP))
         {
             pcpp::UdpLayer* UdpLayer = packet.getLayerOfType<pcpp::UdpLayer>();
             srcPort = UdpLayer->getSrcPort();
             dstPort = UdpLayer->getDstPort();
+            UdpLayer->getUdpHeader()->portSrc = 0;
+            UdpLayer->getUdpHeader()->portDst = 0;
         }
 
-        // extract IPs
+        // extract IPs and mask them
         if (dstPort != 0 && srcPort != 0)
         {
-            pcpp::IPv4Address srcIP = packet.getLayerOfType<pcpp::IPv4Layer>()->getSrcIPv4Address();
-            pcpp::IPv4Address dstIP = packet.getLayerOfType<pcpp::IPv4Layer>()->getDstIPv4Address();
+            pcpp::IPv4Layer* IPv4Layer = packet.getLayerOfType<pcpp::IPv4Layer>();
+            pcpp::IPv4Address srcIP = IPv4Layer->getSrcIPv4Address();
+            pcpp::IPv4Address dstIP = IPv4Layer->getDstIPv4Address();
+            IPv4Layer->setDstIPv4Address(pcpp::IPv4Address{});
+            IPv4Layer->setSrcIPv4Address(pcpp::IPv4Address{});
+
+            // mask link layer
+            auto ethLayer = packet.getLayerOfType<pcpp::EthLayer>();
+            if (ethLayer)
+            {
+                size_t linkLayerHeaderSize = ethLayer->getHeaderLen();
+                memset(ethLayer->getEthHeader(), 0, linkLayerHeaderSize);
+            }
 
             // add packet to connections
             if (srcPort < dstPort)
@@ -63,7 +79,6 @@ void Splitter::consumePacket(pcpp::Packet&& packet)
 
 void Splitter::addPacket(pcpp::IPv4Address clientIP, uint16_t clientPort, pcpp::IPv4Address serverIP, uint16_t serverPort, pcpp::Packet&& packet)
 {
-
     std::stringstream key;
     key << clientIP << ':' << clientPort << '-' << serverIP << ':' << serverPort;
     auto it = m_connections.find(key.str());

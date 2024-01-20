@@ -64,8 +64,8 @@ GraphTensorData SizeDelayGraph::getAsTensors()
         auto indexStart = size_to_index[edge.indexStart];
         auto indexEnd = size_to_index[edge.indexEnd];
 
-        edge_pool_1[nodes.size() * indexStart + indexEnd] = edge.weight;
-        edge_pool_2[nodes.size() * indexEnd + indexStart] = edge.weight;
+        edge_pool_1[Grouper::numGroups * indexStart + edge.indexEnd] = edge.weight;
+        edge_pool_2[Grouper::numGroups * indexEnd + edge.indexStart] = edge.weight;
 
         edge_index_data[i] = indexStart;
         edge_index_data[edgeList.size() + i] = indexEnd;
@@ -83,8 +83,8 @@ GraphTensorData SizeDelayGraph::getAsTensors()
 GraphTensorData PacketListGraph::getAsTensors()
 {
     static constexpr long long featuresSize = 1500;
-    torch::Tensor x_data = torch::zeros({ static_cast<long long>(nodes.size()), featuresSize }, torch::kInt8);
-    int8_t* x_data_ptr = x_data.data_ptr<int8_t>();
+    torch::Tensor x_data = torch::zeros({ static_cast<long long>(nodes.size()), featuresSize }, torch::kUInt8);
+    uint8_t* x_data_ptr = x_data.data_ptr<uint8_t>();
 
     for (size_t i = 0; i < nodes.size(); ++i)
     {

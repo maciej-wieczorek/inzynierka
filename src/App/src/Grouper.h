@@ -25,9 +25,10 @@ public:
 	virtual bool canGroup(const ConnectionContent& connection) override;
 	virtual bool shouldGroup(const ConnectionContent& connection) override;
 
-    static constexpr size_t minSizeConnection = 100;
-    static constexpr size_t maxSizeConnection = 1000;
-    static constexpr size_t maxTotalByteSizeConnection = 1024 * 1024; // 1MB
+    static constexpr size_t minSizeConnection = 50;
+    static constexpr size_t minTotalByteSizeConnection = 1024 * 10; // 10 kB
+    static constexpr size_t maxSizeConnection = 50;
+    static constexpr size_t maxTotalByteSizeConnection = 1024 * 20; // 20 kB
     static constexpr size_t maxTimeLenConnection = 60; // 60s
 
 private:
@@ -56,7 +57,8 @@ public:
 	virtual bool canGroup(const ConnectionContent& connection) override;
 	virtual bool shouldGroup(const ConnectionContent& connection) override;
 
-    static constexpr size_t sizeConnection = 10;
+    static constexpr size_t minSizeConnection = 10;
+	static constexpr size_t minTotalByteSizeConnection = 0;
 };
 
 Grouper& getGrouper(std::string graphType = "");

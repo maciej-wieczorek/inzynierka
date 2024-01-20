@@ -39,7 +39,7 @@ public:
 class PacketListGraph : public Graph
 {
 public:
-    std::vector<std::unique_ptr<char[]>> nodes;
+    std::vector<std::unique_ptr<uint8_t[]>> nodes;
     std::vector<size_t> sizes;
     virtual GraphTensorData getAsTensors() override;
 };

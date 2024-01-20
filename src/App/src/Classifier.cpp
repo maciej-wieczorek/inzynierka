@@ -28,7 +28,7 @@ void Classifier::load(std::string modelPath)
 std::vector<float> Classifier::classify(const GraphTensorData& graph)
 {
 	std::vector<torch::jit::IValue> inputs;
-	if (graph.x.dtype() == torch::kInt8)
+	if (graph.x.dtype() == torch::kUInt8)
 	{
 		inputs.push_back(graph.x.to(torch::kFloat32) / 255.f);
 	}

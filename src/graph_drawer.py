@@ -1,5 +1,6 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+import torch
 
 def draw_graph(G):
     elist = [(u, v) for (u, v, d) in G.edges(data=True)]
@@ -30,11 +31,16 @@ def draw_graph(G):
 
     plt.show()
 
-def get_nx_representation(graph):
+
+def get_nx_representation(x, edge_index):
     G = nx.DiGraph()
-    for line in graph.split(' '):
-        node1, node2, delay = line.split(',')
-        G.add_edge(node1, node2, weight=float(delay.strip()))
+    for node in x:
+        node1 = torch.nonzero(node[:30]).squeeze().item()
+        delays_to_neighbours = node[30:60]
+        neighbours_indices = torch.nonzero(delays_to_neighbours).reshape(-1)
+        for node2 in neighbours_indices:
+            delay = delays_to_neighbours[node2].item()
+            G.add_edge(node1, node2.item(), weight=delay)
     return G
 
 def draw(graph):

@@ -7,6 +7,72 @@
 
 #include <regex>
 
+std::string getLabelNameVNAT(int64_t label)
+{
+	static const std::vector<std::string> labelNames
+	{
+		"nonvpn-netflix", "nonvpn-rdp", "nonvpn-rsync", "nonvpn-scp", "nonvpn-sftp", "nonvpn-skype-chat", "nonvpn-ssh", "nonvpn-vimeo", "nonvpn-voip", "nonvpn-youtube",
+		"vpn-netflix", "vpn-rdp", "vpn-rsync", "vpn-scp", "vpn-sftp", "vpn-skype-chat", "vpn-ssh", "vpn-vimeo", "vpn-voip", "vpn-youtube",
+	};
+
+	return labelNames.at(label);
+}
+
+int64_t extractLabelVNAT(std::string fileName)
+{
+	static const std::vector<std::vector<std::string>> labelMap
+	{
+		{"nonvpn_netflix"}, {"nonvpn_rdp"}, {"nonvpn_rsync"}, {"nonvpn_scp"}, {"nonvpn_sftp"}, {"nonvpn_skype"}, {"nonvpn_ssh"}, {"nonvpn_vimeo"}, {"nonvpn_voip"}, {"nonvpn_youtube"},
+		{"vpn_netflix"}, {"vpn_rdp"}, {"vpn_rsync"}, {"vpn_scp"}, {"vpn_sftp"}, {"vpn_skype"}, {"vpn_ssh"}, {"vpn_vimeo"}, {"vpn_voip"}, {"vpn_youtube"},
+	};
+
+	for (int64_t label = 0; label < labelMap.size(); ++label)
+	{
+		for (const auto& option : labelMap[label])
+		{
+			if (containsCaseInsensitive(fileName, option))
+			{
+				return label;
+			}
+		}
+	};
+
+	std::cerr << "Label not found!\n";
+	return labelMap.size(); // other
+}
+
+std::string getLabelNameMalware(int64_t label)
+{
+	static const std::vector<std::string> labelNames
+	{
+		"benign", "malware"
+	};
+
+	return labelNames.at(label);
+}
+
+int64_t extractLabelMalware(std::string fileName)
+{
+	static const std::vector<std::vector<std::string>> labelMap
+	{
+		{"benign"}, {"malware"}
+	};
+
+	for (int64_t label = 0; label < labelMap.size(); ++label)
+	{
+		for (const auto& option : labelMap[label])
+		{
+			if (containsCaseInsensitive(fileName, option))
+			{
+				return label;
+			}
+		}
+	};
+
+	std::cerr << "Label not found!\n";
+	return labelMap.size(); // other
+}
+
 std::string getLabelName(int64_t label)
 {
 	static const std::vector<std::string> labelNames
@@ -41,6 +107,38 @@ int64_t extractLabel(std::string fileName)
 		}
 	};
 
+	return labelMap.size(); // other
+}
+
+std::string getLabelNamePMNK(int64_t label)
+{
+	static const std::vector<std::string> labelNames
+	{
+		"bulk", "idle", "web", "video", "interactive"
+	};
+
+	return labelNames.at(label);
+}
+
+int64_t extractLabelPMNK(std::string fileName)
+{
+	static const std::vector<std::vector<std::string>> labelMap
+	{
+		{"bulk"}, {"idle"}, {"web"}, {"video"}, {"interactive"}
+	};
+
+	for (int64_t label = 0; label < labelMap.size(); ++label)
+	{
+		for (const auto& option : labelMap[label])
+		{
+			if (containsCaseInsensitive(fileName, option))
+			{
+				return label;
+			}
+		}
+	};
+
+	std::cerr << "Label not found!\n";
 	return labelMap.size(); // other
 }
 
@@ -115,7 +213,7 @@ void Dataset::add(const GraphTensorData& graph, const ConnectionInfo& connection
 
 	m_saveFuture = std::async(std::launch::async, [graph, connectionInfo, this]()
 	{
-		int64_t label = extractLabel(connectionInfo.dataSource);
+		int64_t label = extractLabelVNAT(connectionInfo.dataSource);
 
 		m_offsets.write(reinterpret_cast<const char*>(&m_currentOffset), sizeof(m_currentOffset));
 		m_offsets.write(reinterpret_cast<const char*>(&label), sizeof(label));

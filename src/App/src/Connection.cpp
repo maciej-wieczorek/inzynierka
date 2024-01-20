@@ -1,5 +1,7 @@
 #include "Connection.h"
 #include "Packet.h"
+#include "TcpLayer.h"
+#include "UdpLayer.h"
 
 Connection::Connection(const char* dataSource, pcpp::IPv4Address clientIP, uint16_t clientPort,
     pcpp::IPv4Address serverIP, uint16_t serverPort)
@@ -17,14 +19,30 @@ void Connection::reset()
 
 void Connection::addPacket(pcpp::Packet&& packet)
 {
-	pcpp::RawPacket* rawPacket = packet.getRawPacket();
+  //  pcpp::Layer* transportLayer = nullptr;
+  //  if (packet.isPacketOfType(pcpp::TCP))
+  //  {
+		//transportLayer = packet.getLayerOfType<pcpp::TcpLayer>();
+  //  }
+  //  else if (packet.isPacketOfType(pcpp::UDP))
+  //  {
+		//transportLayer = packet.getLayerOfType<pcpp::UdpLayer>();
+  //  }
+
+    //int payloadLen = transportLayer ? transportLayer->getDataLen() : 0;
+
+    pcpp::RawPacket* rawPacket = packet.getRawPacket();
 	int len = rawPacket->getRawDataLen();
     timespec timestamp = rawPacket->getPacketTimeStamp();
 
-    auto packetData = std::make_unique<char[]>(len);
+    auto packetData = std::make_unique<uint8_t[]>(len);
+    //if (payloadLen > 0)
+    //{
+    //    memcpy(packetData.get(), transportLayer->getDataPtr(), payloadLen);
+    //}
     memcpy(packetData.get(), rawPacket->getRawData(), len);
 
-    m_content.addEntry(timestamp, len, std::move(packetData));
+    m_content.addEntry(timestamp, len, len, std::move(packetData));
 }
 
 GraphTensorData Connection::getAsGraph() const
