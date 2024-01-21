@@ -2,7 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import torch
 
-def draw_graph(G):
+def draw_graph(G, ax):
     elist = [(u, v) for (u, v, d) in G.edges(data=True)]
     elist1 = []
     elist2 = []
@@ -12,24 +12,22 @@ def draw_graph(G):
         else:
             elist2.append(pair)
     pos = nx.circular_layout(G)
-    nx.draw_networkx_nodes(G, pos)
-    nx.draw_networkx_labels(G, pos)
+    nx.draw_networkx_nodes(G, pos, ax=ax)
+    nx.draw_networkx_labels(G, pos, ax=ax)
 
     pos1 = {k: (v[0], v[1]+0.02) for k, v in pos.items()}
-    nx.draw_networkx_edges(G, pos1, edgelist=elist1)
+    nx.draw_networkx_edges(G, pos1, edgelist=elist1, ax=ax)
 
     pos2 = {k: (v[0], v[1]-0.02) for k, v in pos.items()}
-    nx.draw_networkx_edges(G, pos2, edgelist=elist2)
+    nx.draw_networkx_edges(G, pos2, edgelist=elist2, ax=ax)
 
     edge_labels1 = {k:f'{v:.2f}' for (k,v) in nx.get_edge_attributes(G, "weight").items() if k in elist1} 
     pos1 = {k: (v[0]+0.1, v[1]) for k, v in pos1.items()}
-    nx.draw_networkx_edge_labels(G, pos1, edge_labels1)
+    nx.draw_networkx_edge_labels(G, pos1, edge_labels1, ax=ax)
 
     edge_labels2 = {k:f'{v:.2f}' for (k,v) in nx.get_edge_attributes(G, "weight").items() if k in elist2} 
     pos2 = {k: (v[0]-0.1, v[1]) for k, v in pos2.items()}
-    nx.draw_networkx_edge_labels(G, pos2, edge_labels2)
-
-    plt.show()
+    nx.draw_networkx_edge_labels(G, pos2, edge_labels2, ax=ax)
 
 
 def get_nx_representation(x, edge_index):

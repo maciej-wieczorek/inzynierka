@@ -8,13 +8,16 @@ import io
 import random
 import numpy as np
 
+def get_labels():
+    return ["idle", "web", "video", "voip", "file-transfer", "online-game"]
+
 def get_labels_():
     return ["web", "video-stream", "file-transfer", "chat", "voip", "remote-desktop", "ssh", "other"]
 
 def get_labels_NetTraf():
     return ["bulk", "idle", "web", "video", "interactive"]
 
-def get_labels():
+def get_labels_VNAT():
     return ["nonvpn-netflix", "nonvpn-rdp", "nonvpn-rsync", "nonvpn-scp", "nonvpn-sftp", "nonvpn-skype-chat", "nonvpn-ssh", "nonvpn-vimeo", "nonvpn-voip", "nonvpn-youtube",
 	"vpn-netflix", "vpn-rdp", "vpn-rsync", "vpn-scp", "vpn-sftp", "vpn-skype-chat", "vpn-ssh", "vpn-vimeo", "vpn-voip", "vpn-youtube"]
 
@@ -90,7 +93,7 @@ def PacketsDatapipe(root, batch_size=64, balanced=False, weights=[1.0], max_num_
     labels = index[:, 1]
     unique_labels, label_counts = np.unique(index[:, 1], return_counts=True)
 
-    valid_indices = np.where(label_counts >= 2000)
+    valid_indices = np.where(label_counts >= 1000)
     unique_labels = unique_labels[valid_indices]
     label_counts = label_counts[valid_indices]
 

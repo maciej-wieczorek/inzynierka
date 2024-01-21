@@ -42,21 +42,19 @@
             <tbody id="conn-list">
                 <tr>
                     <th rowspan="2">Connection</th>
-                    <th colspan="8">Mean predictions</th> <!-- HARDCODED NUMBER OF LABELS -->
+                    <th colspan="6">Mean predictions</th> <!-- HARDCODED NUMBER OF LABELS -->
                     <th rowspan="2">
                         Number<br />
                         of predictions
                     </th>
                 </tr>
                 <tr> <!-- HARDCODED LABELS-->
+                    <th class="vertical">idle</th>
                     <th class="vertical">web</th>
-                    <th class="vertical">video-stream</th>
-                    <th class="vertical">file-transfer</th>
-                    <th class="vertical">chat</th>
+                    <th class="vertical">video</th>
                     <th class="vertical">voip</th>
-                    <th class="vertical">remote-desktop</th>
-                    <th class="vertical">ssh</th>
-                    <th class="vertical">other</th>
+                    <th class="vertical">file-transfer</th>
+                    <th class="vertical">online-game</th>
                 </tr>
             </tbody>
         </table>
@@ -64,7 +62,7 @@
 
     <script>
 
-        const NUM_OF_LABELS = 8; // HARDCODED NUM OF LABELS
+        const NUM_OF_LABELS = 6; // HARDCODED NUM OF LABELS
         function* generator() {
             let num = 100
             while (true) {

@@ -220,8 +220,8 @@ def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
-packet_list_dataset_location = r'App\src\build_release\VNAT\packet_list_dataset'
-size_delay_dataset_location = r'App\src\build_release\VNAT\size_delay_dataset'
+packet_list_dataset_location = r'App\src\build_release\own\packet_list_dataset'
+size_delay_dataset_location = r'App\src\build_release\own\size_delay_dataset'
 dataset_in_memory_cache = False
 batch_size = 64
 balanced = True

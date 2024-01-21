@@ -73,43 +73,6 @@ int64_t extractLabelMalware(std::string fileName)
 	return labelMap.size(); // other
 }
 
-std::string getLabelName(int64_t label)
-{
-	static const std::vector<std::string> labelNames
-	{
-		"web", "video-stream", "file-transfer", "chat", "voip", "remote-desktop", "ssh", "other"
-	};
-
-	return labelNames.at(label);
-}
-
-int64_t extractLabel(std::string fileName)
-{
-	static const std::vector<std::vector<std::string>> labelMap
-	{
-		{"web"},
-		{"youtube", "netflix", "vimeo"},
-		{"scp", "sftp", "rsync"},
-		{"chat"},
-		{"voip"},
-		{"rdp"},
-		{"ssh"},
-	};
-
-	for (int64_t label = 0; label < labelMap.size(); ++label)
-	{
-		for (const auto& option : labelMap[label])
-		{
-			if (containsCaseInsensitive(fileName, option))
-			{
-				return label;
-			}
-		}
-	};
-
-	return labelMap.size(); // other
-}
-
 std::string getLabelNamePMNK(int64_t label)
 {
 	static const std::vector<std::string> labelNames
@@ -125,6 +88,38 @@ int64_t extractLabelPMNK(std::string fileName)
 	static const std::vector<std::vector<std::string>> labelMap
 	{
 		{"bulk"}, {"idle"}, {"web"}, {"video"}, {"interactive"}
+	};
+
+	for (int64_t label = 0; label < labelMap.size(); ++label)
+	{
+		for (const auto& option : labelMap[label])
+		{
+			if (containsCaseInsensitive(fileName, option))
+			{
+				return label;
+			}
+		}
+	};
+
+	std::cerr << "Label not found!\n";
+	return labelMap.size(); // other
+}
+
+std::string getLabelName(int64_t label)
+{
+	static const std::vector<std::string> labelNames
+	{
+		"idle", "web", "video", "voip", "file-transfer", "online-game"
+	};
+
+	return labelNames.at(label);
+}
+
+int64_t extractLabel(std::string fileName)
+{
+	static const std::vector<std::vector<std::string>> labelMap
+	{
+		{"idle"}, {"web"}, {"video"}, {"voip"}, {"file-transfer"}, {"game"}
 	};
 
 	for (int64_t label = 0; label < labelMap.size(); ++label)
@@ -213,7 +208,7 @@ void Dataset::add(const GraphTensorData& graph, const ConnectionInfo& connection
 
 	m_saveFuture = std::async(std::launch::async, [graph, connectionInfo, this]()
 	{
-		int64_t label = extractLabelVNAT(connectionInfo.dataSource);
+		int64_t label = extractLabel(connectionInfo.dataSource);
 
 		m_offsets.write(reinterpret_cast<const char*>(&m_currentOffset), sizeof(m_currentOffset));
 		m_offsets.write(reinterpret_cast<const char*>(&label), sizeof(label));
