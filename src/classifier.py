@@ -220,10 +220,10 @@ def accuracy(pred_y, y):
     """Calculate accuracy."""
     return ((pred_y == y).sum() / len(y)).item()
 
-packet_list_dataset_location = r'App\src\build_release\own\packet_list_dataset'
-size_delay_dataset_location = r'App\src\build_release\own\size_delay_dataset'
+packet_list_dataset_location = r'App\src\build_release\own\packet_list_10_dataset'
+size_delay_dataset_location = r'App\src\build_release\own\size_delay_50_dataset'
 dataset_in_memory_cache = False
-batch_size = 64
+batch_size = 64 
 balanced = True
 num_workers = 4
 
@@ -233,7 +233,7 @@ def train_model():
     test_weight = 0.2
     val_weight = 0.1
 
-    train_dataset, test_dataset, val_dataset = PacketsDatapipe(size_delay_dataset_location, batch_size=batch_size, \
+    train_dataset, test_dataset, val_dataset = PacketsDatapipe(packet_list_dataset_location, batch_size=batch_size, \
             weights=[train_weight, test_weight, val_weight], balanced=balanced, in_memory=dataset_in_memory_cache)
 
     labels = get_labels()
@@ -253,7 +253,7 @@ def train_model():
     model = GCN(dim_i=next(iter(train_dataset)).num_features, dim_o=len(labels)).to(device)
 
     os.makedirs(ARTIFACTS_DIR)
-    model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=30, learning_curve=False)
+    model = train(model, train_loader, train_batches, val_loader, val_batches, epochs=30, learning_curve=True)
     conf_matrix(model, test_loader, test_batches, labels)
     test_loss, test_acc = test(model, test_loader, test_batches)
     print(f'Test Loss: {test_loss:.2f} | Test Acc: {test_acc*100:.2f}%')
